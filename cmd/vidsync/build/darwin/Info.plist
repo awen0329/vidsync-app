@@ -1,0 +1,81 @@
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>{{.Info.ProductName}}</string>
+        <key>CFBundleExecutable</key>
+        <string>{{.OutputFilename}}</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.thevidsync.desktop</string>
+        <key>CFBundleVersion</key>
+        <string>{{.Info.ProductVersion}}</string>
+        <key>CFBundleGetInfoString</key>
+        <string>{{.Info.Comments}}</string>
+        <key>CFBundleShortVersionString</key>
+        <string>{{.Info.ProductVersion}}</string>
+        <key>CFBundleIconFile</key>
+        <string>iconfile</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>10.13.0</string>
+        <key>NSHighResolutionCapable</key>
+        <string>true</string>
+        <key>NSHumanReadableCopyright</key>
+        <string>{{.Info.Copyright}}</string>
+        <!-- App Transport Security. The cloud control plane is now reached
+             over HTTPS (VITE_CLOUD_API_URL = https://server.thevidsync.com),
+             so we no longer disable ATS wholesale — App Store review rejects
+             NSAllowsArbitraryLoads. We keep only NSAllowsLocalNetworking,
+             which permits the plain-HTTP loopback the app genuinely needs:
+             the in-process media server at http://127.0.0.1:NNNN that serves
+             transcoded preview clips/thumbnails to the WebView. Loopback
+             loads are exempt from ATS regardless, but stating it is explicit
+             and review-friendly. If any remaining non-TLS, non-loopback host
+             is required, add a scoped NSExceptionDomains entry rather than
+             re-enabling arbitrary loads. -->
+        <key>NSAppTransportSecurity</key>
+        <dict>
+            <key>NSAllowsArbitraryLoads</key>
+            <false/>
+            <key>NSAllowsLocalNetworking</key>
+            <true/>
+        </dict>
+        {{if .Info.FileAssociations}}
+        <key>CFBundleDocumentTypes</key>
+        <array>
+          {{range .Info.FileAssociations}}
+          <dict>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+              <string>{{.Ext}}</string>
+            </array>
+            <key>CFBundleTypeName</key>
+            <string>{{.Name}}</string>
+            <key>CFBundleTypeRole</key>
+            <string>{{.Role}}</string>
+            <key>CFBundleTypeIconFile</key>
+            <string>{{.IconName}}</string>
+          </dict>
+          {{end}}
+        </array>
+        {{end}}
+        {{if .Info.Protocols}}
+        <key>CFBundleURLTypes</key>
+        <array>
+          {{range .Info.Protocols}}
+            <dict>
+                <key>CFBundleURLName</key>
+                <string>com.wails.{{.Scheme}}</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>{{.Scheme}}</string>
+                </array>
+                <key>CFBundleTypeRole</key>
+                <string>{{.Role}}</string>
+            </dict>
+          {{end}}
+        </array>
+        {{end}}
+    </dict>
+</plist>

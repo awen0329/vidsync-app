@@ -1,0 +1,3 @@
+# Bundled daemon binary, copied here from bin/syncthing.exe by the
+# pre-build step. Source of truth is the build pipeline, not git.
+syncthing.bin

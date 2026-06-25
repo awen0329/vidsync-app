@@ -1,0 +1,9 @@
+# Vite build output, copied here pre-embed by wails.json frontend:build.
+# Source of truth is frontend/dist; this is a build-time mirror only.
+# Keep the dir itself (via .gitkeep) so go:embed has a target on fresh
+# clones before the first build.
+frontend-dist/*
+!frontend-dist/.gitkeep
+
+# Wails build output
+build/bin/

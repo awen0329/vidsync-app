@@ -1,0 +1,10 @@
+version: v2
+modules:
+  - path: proto
+    name: github.com/CrownLedger/vidsync
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - WIRE_JSON

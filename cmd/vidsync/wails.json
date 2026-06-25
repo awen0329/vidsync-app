@@ -1,0 +1,27 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "vidsync",
+  "outputfilename": "vidsync",
+  "frontend:dir": "../../frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build:wails",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Vidsync"
+  },
+  "info": {
+    "companyName": "Vidsync",
+    "productName": "Vidsync",
+    "productVersion": "0.0.1",
+    "copyright": "Copyright © 2026 Vidsync",
+    "comments": "Vidsync desktop client",
+    "protocols": [
+      {
+        "scheme": "vidsync",
+        "description": "Vidsync auth callback",
+        "role": "Viewer"
+      }
+    ]
+  }
+}

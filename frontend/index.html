@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vidsync</title>
+    <style>
+      /* Paint the dark app background before Tailwind loads so a cold
+         launch never flashes white. We need this here (not just in
+         Tailwind) because Wails' WebView default-background is now
+         white — needed so Stripe's hosted Checkout doesn't have a
+         black void on the left of its 2-column subscription layout. */
+      html, body { background-color: #0F1116; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

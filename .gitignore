@@ -1,0 +1,34 @@
+/syncthing
+/stdiscosrv
+/vidsync
+
+# Control-plane backend was extracted to ../thevidsync-backend.
+# The directory may still exist locally (the live server.exe is
+# running from there until the user restarts it from the new path);
+# don't re-track it from this repo's view.
+/backend
+
+# macOS Finder metadata
+.DS_Store
+
+*.tar.gz
+*.zip
+*.asc
+*.deb
+*.exe
+.jshintrc
+coverage.out
+files/pidx
+bin
+perfstats*.csv
+coverage.xml
+syncthing.sig
+RELEASE
+deb
+*.bz2
+/repos
+/proto/scripts/protoc-gen-gosyncthing
+/compat.json
+
+# wails-downloaded build toolchain (NSIS installer, etc.)
+.tools/

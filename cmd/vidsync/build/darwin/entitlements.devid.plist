@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for DIRECT distribution: Developer ID signing + Hardened
+  Runtime + notarization (the realistic, recommended macOS path — a notarized
+  .dmg you host yourself, à la Syncthing/Resilio). This is NOT sandboxed, so
+  the P2P sync engine, arbitrary-folder access, and shelling out to
+  ffmpeg/braw-thumb all work without re-architecting.
+
+  Apply with: codesign --options runtime --entitlements <this file> ...
+  (the Hardened Runtime itself is the --options runtime flag, not an entitlement.)
+
+  These three are what a Wails (WKWebView) app that loads third-party dylibs
+  (the Blackmagic RAW SDK) typically needs under the Hardened Runtime:
+    - allow-jit / allow-unsigned-executable-memory: WKWebView's JS engine.
+    - disable-library-validation: lets the process load the BRAW SDK dylibs
+      and run helper binaries not signed by our Team ID. Tighten later by
+      signing every nested binary with our cert and dropping this.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

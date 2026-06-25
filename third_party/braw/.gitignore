@@ -1,0 +1,6 @@
+# The braw-thumb helper binaries and the Blackmagic RAW SDK runtime libs
+# (~15 MB Windows, ~12 MB macOS) are staged by hand under win/ and darwin/
+# (see README.md) and not committed. Release packaging copies them next to
+# the app's main executable.
+/win/
+/darwin/

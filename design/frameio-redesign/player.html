@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VidSync — Review player redesign</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    colors: {
+      base:"#0c0f15", panel:"#131820", elevated:"#1b212c", hover:"#262d3a",
+      line:"#222936", lineStrong:"#313a4a",
+      fgStrong:"#f6f8fc", fg:"#d7dde7", fgSoft:"#8b94a6", fgFaint:"#5b6577",
+      accent:"#4f7cff", accentHover:"#6f93ff",
+    },
+    fontFamily:{ sans:['Segoe UI Variable','Segoe UI','system-ui','-apple-system','sans-serif'] },
+  }}};
+</script>
+<style>
+  html,body{height:100%}
+  body{background:#0c0f15;color:#d7dde7;-webkit-font-smoothing:antialiased}
+  .f1{background:linear-gradient(135deg,#1a2740 0%,#0e1830 45%,#06101f 100%)}
+  .f3{background:linear-gradient(160deg,#2a1530 0%,#160a22 50%,#08040f 100%)}
+  .f4{background:radial-gradient(120% 100% at 70% 20%,#103030 0%,#0a1d22 55%,#051014 100%)}
+  .f6{background:radial-gradient(120% 120% at 40% 30%,#26303f 0%,#121821 60%,#080b11 100%)}
+  .f7{background:linear-gradient(150deg,#3b2418 0%,#1f130b 55%,#0b0704 100%)}
+  .vignette:after{content:"";position:absolute;inset:0;background:radial-gradient(120% 120% at 50% 30%,transparent 40%,rgba(0,0,0,.55) 100%)}
+  .stage{background:radial-gradient(130% 100% at 50% 35%,#16263f 0%,#0a1426 45%,#05080f 100%)}
+  .silh:after{content:"";position:absolute;inset:0;background:
+     radial-gradient(40% 60% at 62% 58%,rgba(0,0,0,.85) 0%,rgba(0,0,0,0) 60%),
+     radial-gradient(70% 90% at 35% 30%,rgba(255,176,87,.18) 0%,rgba(255,176,87,0) 55%)}
+  ::-webkit-scrollbar{width:9px}
+  ::-webkit-scrollbar-thumb{background:#313a4a;border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body class="font-sans">
+<div class="flex h-screen w-screen overflow-hidden">
+
+  <!-- slim nav rail -->
+  <nav class="flex w-[64px] shrink-0 flex-col items-center border-r border-line bg-[#0a0d12] py-4">
+    <button class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-[#7b5cff] text-white shadow-lg shadow-accent/30"><svg viewBox="0 0 24 24" fill="none" class="h-5 w-5"><path d="M5 5.5 12 9l7-3.5M5 5.5v9L12 18m-7-12L12 2l7 3.5m0 0v9L12 18m0 0v-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <div class="flex flex-1 flex-col items-center gap-1.5">
+      <button class="flex h-10 w-10 items-center justify-center rounded-xl text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="none" class="h-[19px] w-[19px]"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.9"/><path d="m17 17-4.35-4.35" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button>
+      <button class="relative flex h-10 w-10 items-center justify-center rounded-xl text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 24 24" fill="none" class="h-[19px] w-[19px]"><path d="M6 9a6 6 0 1 1 12 0c0 4 1.5 5 2 6H4c.5-1 2-2 2-6zM9.5 19a2.5 2.5 0 0 0 5 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-[#0a0d12]"></span></button>
+      <button class="flex h-10 w-10 items-center justify-center rounded-xl text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 24 24" fill="none" class="h-[19px] w-[19px]"><path d="M8 17V5m0 12-3-3m3 3 3-3M16 7v12m0-12 3 3m-3-3-3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+    <div class="flex flex-col items-center gap-2">
+      <button class="flex h-10 w-10 items-center justify-center rounded-xl text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 24 24" fill="none" class="h-[19px] w-[19px]"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7M12 16h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+      <button class="flex h-10 w-10 items-center justify-center rounded-xl text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 24 24" fill="none" class="h-[19px] w-[19px]"><rect x="2.5" y="6" width="19" height="12" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M2.5 10h19" stroke="currentColor" stroke-width="1.7"/></svg></button>
+      <button class="flex h-10 w-10 items-center justify-center rounded-xl text-emerald-400 hover:bg-hover"><svg viewBox="0 0 24 24" fill="currentColor" class="h-[18px] w-[18px]"><path d="M6 2 1 5.2l5 3.2 5-3.2L6 2Zm12 0-5 3.2 5 3.2 5-3.2L18 2ZM1 11.6l5 3.2 5-3.2-5-3.2-5 3.2Zm17-3.2-5 3.2 5 3.2 5-3.2-5-3.2ZM6 16.5l5 3.2 5-3.2-5-3.2-5 3.2Z"/></svg></button>
+      <div class="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-[#aebfff] ring-1 ring-accent/40">M</div>
+    </div>
+  </nav>
+
+  <!-- projects navigator (persistent) -->
+  <aside class="flex w-[230px] shrink-0 flex-col border-r border-line bg-panel">
+    <div class="flex items-center justify-between px-4 pb-2 pt-4"><span class="text-sm font-semibold text-fgStrong">Projects</span></div>
+    <div class="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+      <div class="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.13em] text-fgFaint">Owned</div>
+      <button class="flex w-full items-center gap-2 rounded-lg bg-hover/60 px-2 py-1.5 text-sm text-fgStrong">
+        <svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 rotate-90 text-fgSoft"><path d="M7 5l6 5-6 5z"/></svg>
+        <span class="h-5 w-5 shrink-0 overflow-hidden rounded f1 vignette ring-1 ring-lineStrong"></span>
+        <span class="flex-1 truncate text-left">Oryp — S2</span><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+      </button>
+      <div class="ml-3 border-l border-line pl-2">
+        <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-[13px] text-fgSoft hover:bg-hover hover:text-fg">Episode 01</button>
+        <button class="flex w-full items-center gap-2 rounded-lg bg-accent/12 px-2 py-1 text-[13px] font-medium text-accent">Key scenes</button>
+        <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-[13px] text-fgSoft hover:bg-hover hover:text-fg">Dailies</button>
+      </div>
+      <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-fg hover:bg-hover"><svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 text-fgFaint"><path d="M7 5l6 5-6 5z"/></svg><span class="h-5 w-5 shrink-0 overflow-hidden rounded f4 vignette ring-1 ring-lineStrong"></span><span class="flex-1 truncate text-left">Tuner</span></button>
+      <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-fg hover:bg-hover"><svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 text-fgFaint"><path d="M7 5l6 5-6 5z"/></svg><span class="h-5 w-5 shrink-0 overflow-hidden rounded f3 vignette ring-1 ring-lineStrong"></span><span class="flex-1 truncate text-left">Nightfall</span></button>
+      <div class="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.13em] text-fgFaint">Invited</div>
+      <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-fg hover:bg-hover"><svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 text-fgFaint"><path d="M7 5l6 5-6 5z"/></svg><span class="h-5 w-5 shrink-0 overflow-hidden rounded f7 vignette ring-1 ring-lineStrong"></span><span class="flex-1 truncate text-left">Atlas Promo</span></button>
+      <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-fg hover:bg-hover"><svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3 text-fgFaint"><path d="M7 5l6 5-6 5z"/></svg><span class="h-5 w-5 shrink-0 overflow-hidden rounded f6 vignette ring-1 ring-lineStrong"></span><span class="flex-1 truncate text-left">BTS Reel</span></button>
+    </div>
+  </aside>
+
+  <!-- player + comments -->
+  <main class="flex min-w-0 flex-1 flex-col bg-base">
+    <header class="flex items-center gap-3 border-b border-line px-4 py-2.5">
+      <button class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4"><path d="M12.7 5.3a1 1 0 0 1 0 1.4L9.41 10l3.3 3.3a1 1 0 1 1-1.42 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 0 1 1.42 0z"/></svg>Back</button>
+      <div class="min-w-0 flex-1">
+        <div class="truncate text-sm font-medium text-fgStrong">SC04_HERO_silhouette_v3.mov</div>
+        <div class="truncate font-mono text-[11px] text-fgSoft">Oryp — S2 / Key scenes / Hero shots</div>
+      </div>
+
+      <!-- version switcher -->
+      <button class="inline-flex items-center gap-1.5 rounded-lg bg-panel px-2.5 py-1.5 text-xs font-medium text-fg ring-1 ring-line hover:ring-lineStrong"><span class="h-2 w-2 rounded-full bg-accent"></span> v3 <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 text-fgFaint"><path d="M6 8l4 4 4-4z"/></svg></button>
+
+      <!-- 3 layout toggles (Frame.io style) -->
+      <div class="inline-flex items-center rounded-lg bg-panel p-0.5 ring-1 ring-line" title="Layout">
+        <button class="flex h-7 w-8 items-center justify-center rounded-md text-fgSoft hover:text-fgStrong" title="Files panel">
+          <svg viewBox="0 0 22 18" fill="none" class="h-4 w-[18px]"><rect x="1.5" y="2" width="19" height="14" rx="2.5" stroke="currentColor" stroke-width="1.6"/><rect x="1.5" y="2" width="6.5" height="14" rx="2.5" fill="currentColor" fill-opacity="0.55"/></svg>
+        </button>
+        <button class="flex h-7 w-8 items-center justify-center rounded-md bg-accent/20 text-accent" title="Player">
+          <svg viewBox="0 0 22 18" fill="none" class="h-4 w-[18px]"><rect x="1.5" y="2" width="19" height="14" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 6.5 13.5 9 9 11.5z" fill="currentColor"/></svg>
+        </button>
+        <button class="flex h-7 w-8 items-center justify-center rounded-md bg-accent/20 text-accent" title="Comments / Inspector">
+          <svg viewBox="0 0 22 18" fill="none" class="h-4 w-[18px]"><rect x="1.5" y="2" width="19" height="14" rx="2.5" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="2" width="6.5" height="14" rx="2.5" fill="currentColor" fill-opacity="0.55"/></svg>
+        </button>
+      </div>
+
+      <button class="rounded-md p-1.5 text-fgSoft hover:bg-hover hover:text-fgStrong" title="Full screen"><svg viewBox="0 0 20 20" fill="none" class="h-4 w-4"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </header>
+
+    <div class="flex min-h-0 flex-1">
+      <section class="flex min-w-0 flex-1 flex-col">
+        <div class="relative flex-1">
+          <div class="silh absolute inset-0 stage"></div>
+          <div class="absolute left-[46%] top-[40%] flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full rounded-bl-none bg-accent text-[11px] font-semibold text-white shadow-lg ring-2 ring-white/30">2</div>
+          <div class="absolute left-[64%] top-[62%] flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full rounded-bl-none bg-rose-500 text-[11px] font-semibold text-white shadow-lg ring-2 ring-white/30">3</div>
+        </div>
+
+        <div class="border-t border-line bg-panel px-4 pb-3 pt-2.5">
+          <div class="relative mb-3 h-8">
+            <div class="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-elevated"></div>
+            <div class="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-accent/40" style="left:22%;width:18%"></div>
+            <div class="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-accent" style="left:0;width:34%"></div>
+            <span class="absolute top-1/2 h-3 w-1 -translate-y-1/2 rounded bg-accent" style="left:12%"></span>
+            <span class="absolute top-1/2 h-3 w-1 -translate-y-1/2 rounded bg-accent" style="left:24%"></span>
+            <span class="absolute top-1/2 h-3 w-1 -translate-y-1/2 rounded bg-rose-400" style="left:58%"></span>
+            <span class="absolute top-1/2 h-3 w-1 -translate-y-1/2 rounded bg-emerald-400" style="left:81%"></span>
+            <div class="absolute top-0 bottom-0 w-0.5 bg-white" style="left:34%"><div class="absolute -top-0.5 left-1/2 h-3 w-3 -translate-x-1/2 rounded-sm bg-white shadow"></div></div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button class="text-fgSoft hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5"><path d="M5 4h2v12H5zM8 10l8-6v12z"/></svg></button>
+            <button class="flex h-9 w-9 items-center justify-center rounded-full bg-white text-base shadow"><svg viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5"><path d="M6 4l10 6-10 6z"/></svg></button>
+            <button class="text-fgSoft hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5"><path d="M13 4h2v12h-2zM4 4l8 6-8 6z"/></svg></button>
+            <span class="ml-1 font-mono text-xs text-fg">00:46<span class="text-fgFaint"> / 02:14</span></span>
+            <div class="mx-3 flex items-center gap-1.5 rounded-lg bg-elevated px-2 py-1 ring-1 ring-line"><span class="font-mono text-[11px] text-accent">IN 00:30</span><span class="text-fgFaint">→</span><span class="font-mono text-[11px] text-accent">OUT 00:54</span></div>
+            <div class="ml-auto flex items-center gap-1 text-fgSoft">
+              <button class="rounded-md px-2 py-1 text-xs hover:bg-hover hover:text-fgStrong">1×</button>
+              <button class="rounded-md p-1.5 hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="none" class="h-4 w-4"><path d="M4 7v6m12-6v6M4 10h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+              <button class="rounded-md p-1.5 hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="none" class="h-4 w-4"><path d="M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 7v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+              <button class="rounded-md p-1.5 hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="none" class="h-4 w-4"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- comments rail -->
+      <aside class="flex w-[358px] shrink-0 flex-col border-l border-line bg-panel">
+        <nav class="flex items-center gap-5 border-b border-line px-4 pt-3 text-sm">
+          <button class="-mb-px border-b-2 border-accent pb-2.5 font-medium text-fgStrong">Comments <span class="ml-0.5 rounded-full bg-accent/15 px-1.5 text-[11px] text-accent">3</span></button>
+          <button class="-mb-px border-b-2 border-transparent pb-2.5 text-fgSoft hover:text-fgStrong">Inspector</button>
+        </nav>
+        <div class="flex items-center justify-between px-4 py-2.5">
+          <button class="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2 py-1 text-xs text-fg ring-1 ring-line">All comments <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 text-fgFaint"><path d="M6 8l4 4 4-4z"/></svg></button>
+          <div class="flex items-center gap-1 text-fgSoft">
+            <button class="rounded-md p-1.5 hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="none" class="h-4 w-4"><path d="M4 6h12M6 10h8M8 14h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+          </div>
+        </div>
+        <div class="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-2">
+          <div class="rounded-lg px-2 py-3">
+            <div class="flex gap-2.5">
+              <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/25 text-[11px] font-semibold text-emerald-100">KS</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="text-sm font-medium text-fgStrong">Kira S.</span><span class="text-[11px] text-fgFaint">2h ago</span></div>
+                <div class="mt-1"><button class="mr-1.5 rounded bg-elevated px-1.5 py-0.5 align-middle font-mono text-[11px] text-accent">00:12</button><span class="align-middle text-sm text-fg">Let's hold this silhouette a beat longer before the cut.</span></div>
+                <div class="mt-2 flex items-center gap-3 text-[11px] text-fgSoft"><button class="inline-flex items-center gap-1 hover:text-fgStrong">👍 2</button><button class="hover:text-fgStrong">Reply</button><button class="hover:text-fgStrong">Resolve</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg bg-elevated/70 px-2 py-3 ring-1 ring-accent/30">
+            <div class="flex gap-2.5">
+              <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/25 text-[11px] font-semibold text-[#bcccff]">AR</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="text-sm font-medium text-fgStrong">Andre R.</span><span class="text-[11px] text-fgFaint">1h ago</span><span class="ml-auto rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[10px] text-accent">00:30→00:54</span></div>
+                <div class="mt-1"><span class="text-sm text-fg">Color on this range reads too warm vs the establisher. Push it cooler.</span></div>
+                <div class="mt-2 flex items-center gap-3 text-[11px] text-fgSoft"><button class="inline-flex items-center gap-1 text-accent">👍 1</button><button class="hover:text-fgStrong">Reply</button><button class="hover:text-fgStrong">Resolve</button></div>
+                <div class="mt-3 flex gap-2 pl-1"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500/25 text-[10px] font-semibold text-violet-100">JP</span><div><div class="flex items-center gap-2"><span class="text-[13px] font-medium text-fgStrong">Jo P.</span><span class="text-[11px] text-fgFaint">44m ago</span></div><div class="text-[13px] text-fg">On it — regrade by EOD.</div></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg px-2 py-3">
+            <div class="flex gap-2.5">
+              <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-500/25 text-[11px] font-semibold text-rose-100">SP</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="text-sm font-medium text-fgStrong">Sophie P.</span><span class="text-[11px] text-fgFaint">5h ago</span><span class="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300"><svg viewBox="0 0 20 20" fill="currentColor" class="h-3 w-3"><path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z"/></svg>Resolved</span></div>
+                <div class="mt-1"><button class="mr-1.5 rounded bg-elevated px-1.5 py-0.5 align-middle font-mono text-[11px] text-fgSoft">01:58</button><span class="align-middle text-sm text-fgFaint line-through">Boom mic dips into frame top-right.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="border-t border-line p-3">
+          <div class="rounded-xl border border-line bg-base p-2 focus-within:border-accent">
+            <div class="mb-2 flex items-center gap-2"><span class="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[11px] text-accent">00:30 → 00:54</span><span class="text-[11px] text-fgFaint">range selected</span></div>
+            <textarea rows="2" placeholder="Add a comment at 00:30 → 00:54…" class="w-full resize-none bg-transparent px-1 text-sm text-fgStrong placeholder:text-fgFaint focus:outline-none"></textarea>
+            <div class="mt-1 flex items-center gap-1">
+              <button class="rounded-md p-1.5 text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="none" class="h-4 w-4"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 8h.01M12.5 8h.01M7 12.5c1.5 1.3 4.5 1.3 6 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+              <button class="rounded-md p-1.5 text-fgSoft hover:bg-hover hover:text-fgStrong"><svg viewBox="0 0 20 20" fill="none" class="h-4 w-4"><path d="M4 14l3.5-4 2.5 3 3-4 3 5M3 5h14v10H3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
+              <button class="rounded-md px-2 py-1 text-[11px] font-medium text-fgSoft hover:bg-hover hover:text-fgStrong">@ mention</button>
+              <button class="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-accentHover">Comment</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>

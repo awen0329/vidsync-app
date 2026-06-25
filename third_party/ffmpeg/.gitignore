@@ -1,0 +1,7 @@
+# Per-platform ffmpeg binaries are large (~97 MB) and staged by hand from
+# the upstream downloads (binary + its bundled LICENSE/README). None of it
+# is committed — see README.md to (re)stage. Release packaging
+# (build-release.ps1) copies the binary next to vidsync.exe.
+/windows/
+/darwin/
+/linux/

@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────
+   Theme tokens. Single source of truth for backgrounds, text, borders,
+   and the accent color. Components reference these via the semantic
+   classes registered in tailwind.config.ts (bg-base, bg-panel,
+   text-default, bg-accent, etc.) so we can swap dark / light without
+   touching markup.
+
+   Dark mode is the default (Iconik-leaning navy/slate). Light mode is
+   activated by `[data-theme="light"]` on the html element.
+   ───────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root,
+  [data-theme="dark"] {
+    /* Surfaces — Frame.io leaning: deep cool charcoal-navy. The
+       contrast between base → panel → elevated is intentionally subtle
+       so the UI reads as one continuous space (premium media tools)
+       rather than a stack of tiles (admin dashboards). Deepened in the
+       2026 Frame.io redesign for a richer, more cinematic backdrop. */
+    --base: 12 15 21;             /* #0c0f15  app background */
+    --panel: 19 24 32;            /* #131820  sidebars, table headers */
+    --elevated: 27 33 44;         /* #1b212c  cards, modals */
+    --hover: 38 45 58;            /* #262d3a  hover wash */
+
+    /* Even darker than base — the slim icon rail sits "below" the app
+       surface so the navigation reads as window chrome, not content. */
+    --rail: 10 13 18;             /* #0a0d12 */
+
+    /* Foreground text — cool grey scale, reads softer against the deep
+       backgrounds. */
+    --fg-strong: 246 248 252;     /* #f6f8fc  headings, primary copy */
+    --fg-default: 215 221 231;    /* #d7dde7  body */
+    --fg-soft: 139 148 166;       /* #8b94a6  secondary */
+    --fg-faint: 91 101 119;       /* #5b6577  captions */
+
+    /* Borders — kept very low contrast so panels and cards bleed
+       gently into each other instead of compartmentalizing. */
+    --line: 34 41 54;             /* #222936  default dividers */
+    --line-strong: 49 58 74;      /* #313a4a  emphasized */
+
+    /* Accent — cobalt blue (Frame.io). `accent-soft` is the same hue at
+       low alpha for tinted backgrounds; `accent-fg` is the readable
+       text color when placed on a solid accent background. */
+    --accent: 79 124 255;         /* #4f7cff  cobalt-500 */
+    --accent-hover: 111 147 255;  /* #6f93ff  cobalt-400 */
+    --accent-soft: 79 124 255;
+    --accent-fg: 255 255 255;     /* white — readable on solid cobalt */
+
+    color-scheme: dark;
+  }
+
+  [data-theme="light"] {
+    --base: 248 250 252;          /* #f8fafc */
+    --panel: 255 255 255;         /* #ffffff */
+    --elevated: 255 255 255;
+    --hover: 241 245 249;         /* #f1f5f9 */
+    --rail: 241 244 249;          /* #f1f4f9  slightly inset rail */
+
+    --fg-strong: 15 23 42;        /* #0f172a */
+    --fg-default: 30 41 59;       /* #1e293b */
+    --fg-soft: 71 85 105;         /* #475569 */
+    --fg-faint: 100 116 139;      /* #64748b */
+
+    --line: 226 232 240;          /* #e2e8f0 */
+    --line-strong: 203 213 225;   /* #cbd5e1 */
+
+    --accent: 51 96 235;          /* #3360eb  cobalt-600 */
+    --accent-hover: 37 78 214;    /* #254ed6  cobalt-700 */
+    --accent-soft: 79 124 255;
+    --accent-fg: 255 255 255;     /* white */
+
+    color-scheme: light;
+  }
+
+  :root {
+    /* Height reserved at the top of the window for native window
+       chrome (Mac traffic lights, Windows caption buttons). The
+       browser preview keeps this at 0; a desktop wrapper can set
+       --titlebar-h: 28px on the root element to push content down
+       without any layout change here. */
+    --titlebar-h: 0px;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: rgb(var(--base));
+    color: rgb(var(--fg-default));
+    @apply antialiased;
+    /* System UI stack matching each OS's default app font:
+       San Francisco on macOS, Segoe UI Variable on Windows 11
+       (Segoe UI fallback for Win 10), Inter/Ubuntu/Cantarell on
+       Linux via `system-ui`. */
+    font-family:
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI Variable",
+      "Segoe UI",
+      system-ui,
+      Roboto,
+      "Helvetica Neue",
+      Arial,
+      sans-serif;
+    /* Stop pull-to-refresh / rubber-band scroll at the window edge.
+       In a desktop wrapper these manifest as visible bounce; in a
+       browser they confuse users when they overscroll a list. */
+    overscroll-behavior: none;
+  }
+
+  /* Thin, theme-matched scrollbars. Mac auto-hides natively but
+     the rule is harmless there; Win/Linux otherwise show chunky
+     default scrollbars that look out of place over our dark UI. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line-strong)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--line-strong));
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--fg-faint));
+  }
+}

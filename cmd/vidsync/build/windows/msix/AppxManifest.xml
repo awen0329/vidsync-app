@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX package manifest for the Microsoft Store (full-trust Win32 / Desktop
+  Bridge). runFullTrust keeps the whole app working as-is: the in-process
+  Syncthing engine (listening sockets, LAN discovery), arbitrary-folder
+  access, the system tray, and shelling out to ffmpeg.exe / braw-thumb.exe.
+  No sandbox rewrite — unlike the Mac App Store.
+
+  >>> BEFORE SUBMITTING, replace the two placeholders below with the values
+  >>> Partner Center assigns when you reserve the app name (Product identity
+  >>> page): Identity/@Name and Identity/@Publisher (and PublisherDisplayName).
+  >>> They MUST match exactly or the Store rejects the upload.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 rescap">
+
+  <Identity
+    Name="PARTNER_CENTER_RESERVED_NAME"
+    Publisher="CN=PARTNER_CENTER_PUBLISHER_ID"
+    Version="0.0.1.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Vidsync</DisplayName>
+    <PublisherDisplayName>Vidsync</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!-- Win10 1809 (17763) is the app's existing floor (see NSIS checkArchitecture). -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Vidsync" Executable="vidsync.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Vidsync"
+        Description="Vidsync desktop client"
+        BackgroundColor="#1A1A1A"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- vidsync:// auth-callback deep links (matches the NSIS/Info.plist protocol). -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="vidsync">
+            <uap:DisplayName>Vidsync auth callback</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+
+        <!-- Autostart. Ships disabled; the user (or the app's settings toggle)
+             enables it. The Store requires startup be user-controllable. -->
+        <uap5:Extension Category="windows.startupTask"
+                        Executable="vidsync.exe"
+                        EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="VidsyncAutostart" Enabled="false" DisplayName="Vidsync" />
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Full-trust desktop app: required for the native sync engine, sockets,
+         file access, and child processes (ffmpeg/braw-thumb). -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
