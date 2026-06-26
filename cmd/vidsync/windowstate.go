@@ -33,6 +33,11 @@ type windowState struct {
 const (
 	defaultWidth  = 1280
 	defaultHeight = 800
+	// Geometry below these is treated as bogus (a too-small or minimized
+	// window) and neither saved nor restored.
+	minSaneWidth       = 480
+	minSaneHeight      = 360
+	minimizedThreshold = -30000 // Windows parks minimized windows at -32000
 )
 
 // loadWindowState reads the persisted window geometry. Returns
@@ -85,9 +90,13 @@ func (a *App) captureCurrentWindow() {
 	}
 	w, h := runtime.WindowGetSize(ctx)
 	x, y := runtime.WindowGetPosition(ctx)
-	if w <= 0 || h <= 0 {
-		log.Printf("windowstate: skip capture, got zero size (w=%d h=%d)", w, h)
-		return // window already hidden / not yet mapped
+	// Skip bogus geometry: a hidden/not-yet-mapped window reports zero,
+	// and a minimized window reports Windows' off-screen "-32000" position
+	// with a tiny size. Persisting either would reopen the app invisible
+	// (the bug this guards against).
+	if w < minSaneWidth || h < minSaneHeight || x <= minimizedThreshold || y <= minimizedThreshold {
+		log.Printf("windowstate: skip capture, bogus geometry (x=%d y=%d w=%d h=%d)", x, y, w, h)
+		return
 	}
 	log.Printf("windowstate: save x=%d y=%d w=%d h=%d", x, y, w, h)
 	saveWindowState(windowState{X: x, Y: y, Width: w, Height: h})
@@ -105,8 +114,13 @@ func (a *App) applyWindowState() {
 		return
 	}
 	s := loadWindowState()
-	if s.Width <= 0 || s.Height <= 0 {
-		return // nothing to apply
+	if s.Width < minSaneWidth || s.Height < minSaneHeight {
+		return // nothing valid to apply
+	}
+	// Don't restore an off-screen (minimized) position — that's what left
+	// the window invisible. Let Wails center it instead.
+	if s.X <= minimizedThreshold || s.Y <= minimizedThreshold {
+		return
 	}
 	runtime.WindowSetPosition(ctx, s.X, s.Y)
 }

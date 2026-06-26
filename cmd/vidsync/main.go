@@ -158,19 +158,21 @@ func main() {
 	// since Wails options.App doesn't take X/Y.
 	savedSize := loadWindowState()
 	width := savedSize.Width
-	if width <= 0 {
+	if width < minSaneWidth {
 		width = defaultWidth
 	}
 	height := savedSize.Height
-	if height <= 0 {
+	if height < minSaneHeight {
 		height = defaultHeight
 	}
 
 	log.Printf("wails.Run: starting (width=%d height=%d)", width, height)
 	opts := &options.App{
-		Title:  "Vidsync",
-		Width:  width,
-		Height: height,
+		Title:     "Vidsync",
+		Width:     width,
+		Height:    height,
+		MinWidth:  minSaneWidth,
+		MinHeight: minSaneHeight,
 		// Enable native drag-and-drop so users can drop a folder from
 		// Explorer onto the window to start a project. The handler is
 		// wired up in App.OnStartup; here we just opt into the feature.
