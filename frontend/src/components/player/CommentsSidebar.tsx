@@ -76,6 +76,113 @@ const COMMENT_FILTERS: Record<CommentFilter, string> = {
   resolved: "Resolved",
 };
 
+// A small set of quick emojis for the composer pickers.
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "🎉", "🔥", "👀", "🙏", "✅", "😮", "😢"];
+
+// EmojiButton: a face icon that opens a tiny emoji palette; picking one calls
+// onPick (the composers append it to their draft).
+function EmojiButton({
+  onPick,
+  align = "left",
+}: {
+  onPick: (emoji: string) => void;
+  align?: "left" | "right";
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        title="Emoji"
+        aria-label="Insert emoji"
+        className={cn(
+          "rounded-md p-1.5 transition-colors hover:bg-hover hover:text-fg-strong",
+          open ? "text-pink-400" : "text-fg-soft",
+        )}
+      >
+        <svg viewBox="0 0 20 20" fill="none" className="h-[18px] w-[18px]" aria-hidden>
+          <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M7.5 8h.01M12.5 8h.01M7 12.5c1.5 1.3 4.5 1.3 6 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "absolute bottom-full z-40 mb-1.5 flex w-max gap-0.5 rounded-xl border border-line-strong bg-elevated p-1.5 shadow-2xl shadow-black/60",
+              align === "right" ? "right-0" : "left-0",
+            )}
+          >
+            {QUICK_EMOJIS.map((em) => (
+              <button
+                key={em}
+                type="button"
+                onClick={() => {
+                  onPick(em);
+                  setOpen(false);
+                }}
+                className="rounded-lg px-1.5 py-1 text-base leading-none hover:bg-hover"
+              >
+                {em}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// AttachButton: paperclip affordance matching the reference composer. File
+// attachments aren't wired to the backend yet, so it surfaces that on hover.
+function AttachButton() {
+  return (
+    <button
+      type="button"
+      title="Attach a file — coming soon"
+      aria-label="Attach a file"
+      onClick={(e) => e.stopPropagation()}
+      className="rounded-md p-1.5 text-fg-soft transition-colors hover:bg-hover hover:text-fg-strong"
+    >
+      <svg viewBox="0 0 20 20" fill="none" className="h-[18px] w-[18px]" aria-hidden>
+        <path
+          d="M13.5 7l-5 5a2 2 0 0 0 2.83 2.83l5.17-5.17a3.5 3.5 0 0 0-4.95-4.95l-5.3 5.3a5 5 0 0 0 7.07 7.07L17 14"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
+// StopwatchIcon: the little timer beside a comment's timecode/range chip.
+function StopwatchIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <circle cx="10" cy="11" r="6" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M10 11V8M8 3h4M10 5V3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// GlobeIcon: the "public" indicator shown top-right of a top-level comment.
+function GlobeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
+      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M3 10h14M10 3c2 2.2 2 11.8 0 14M10 3c-2 2.2-2 11.8 0 14" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 // FieldsTab: Frame.io-style metadata inspector — a header summary card plus a
 // searchable, filterable list of the clip's fields. Values we can't read from
 // the file / media element show as empty so the Only Empty / Only Filled
@@ -317,13 +424,13 @@ function TabButton({
       className={cn(
         "-mb-px flex items-center gap-1.5 border-b-2 pb-2 font-medium transition-colors",
         active
-          ? "border-accent-hover text-fg-strong"
+          ? "border-pink-500 text-fg-strong"
           : "border-transparent text-fg-soft hover:text-fg-strong",
       )}
     >
       {label}
       {count !== undefined && count > 0 && (
-        <span className="rounded-full bg-accent/15 px-1.5 text-[11px] text-accent">
+        <span className="rounded-full bg-pink-500/15 px-1.5 text-[11px] font-semibold text-pink-400">
           {count}
         </span>
       )}
@@ -395,7 +502,7 @@ function CommentsTab({
               >
                 {COMMENT_FILTERS[key]}
                 {filter === key && (
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-accent" aria-hidden>
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-pink-400" aria-hidden>
                     <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
                   </svg>
                 )}
@@ -427,6 +534,7 @@ function CommentsTab({
             <ThreadView
               key={thread.id}
               thread={thread}
+              index={comments.threads.findIndex((t) => t.id === thread.id) + 1}
               onSeek={onSeek}
               isActive={activeMarkerId === thread.id}
               onFocus={() => setActiveMarkerId(thread.id)}
@@ -441,14 +549,17 @@ function CommentsTab({
       {/* Composer — a bordered card pinned to the playhead (or the in→out
           range when one is set), matching the reference. */}
       <div className="border-t border-line-strong p-3">
-        <div className="rounded-xl border border-line bg-base p-2 focus-within:border-accent">
+        <div className="rounded-xl border border-line bg-base p-2 transition-colors focus-within:border-pink-500/60">
           <div className="mb-2 flex items-center gap-2">
             <span
               className={cn(
-                "rounded px-1.5 py-0.5 font-mono text-[11px]",
-                selection ? "bg-accent/15 text-accent" : "bg-elevated text-fg-soft",
+                "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px]",
+                selection
+                  ? "bg-rose-500/10 text-rose-300"
+                  : "bg-elevated text-fg-soft",
               )}
             >
+              <StopwatchIcon className="h-3 w-3" />
               {formatRange(start, end)}
             </span>
             <span className="text-[11px] text-fg-faint">
@@ -485,15 +596,15 @@ function CommentsTab({
             }
             className="w-full resize-none bg-transparent px-1 text-sm text-fg-strong placeholder:text-fg-faint focus:outline-none disabled:opacity-60"
           />
-          <div className="mt-1 flex items-center gap-1">
-            <span className="rounded-md px-1.5 py-1 text-[11px] text-fg-faint">
-              ⏎ to send
-            </span>
+          <div className="mt-1 flex items-center gap-0.5">
+            <EmojiButton onPick={(em) => setDraft((d) => d + em)} />
+            <AttachButton />
+            <span className="ml-1 text-[11px] text-fg-faint">⏎ to send</span>
             <button
               type="button"
               onClick={submit}
               disabled={!draft.trim() || !comments.canComment}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-40"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-pink-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-pink-500/30 hover:bg-pink-400 disabled:opacity-40 disabled:shadow-none"
             >
               Comment
             </button>
@@ -506,6 +617,7 @@ function CommentsTab({
 
 function ThreadView({
   thread,
+  index,
   onSeek,
   isActive,
   onFocus,
@@ -514,6 +626,7 @@ function ThreadView({
   onDelete,
 }: {
   thread: CommentThread;
+  index: number;
   onSeek: (t: number) => void;
   isActive: boolean;
   onFocus: () => void;
@@ -531,27 +644,33 @@ function ThreadView({
     setReplying(false);
   };
 
+  const openReplyWith = (seed = "") => {
+    setReplying(true);
+    setReplyDraft((d) => d + seed);
+  };
+
   return (
     <div
       onClick={onFocus}
       className={cn(
-        "group rounded-lg px-2 py-3 transition-colors",
+        "group rounded-xl px-2.5 py-3 transition-colors",
         isActive
-          ? "bg-elevated/70 ring-1 ring-accent/30"
-          : "hover:bg-hover/40",
+          ? "bg-pink-500/10 ring-1 ring-pink-500/40"
+          : "hover:bg-hover/50",
       )}
     >
-      <CommentRow comment={thread} onSeek={onSeek} resolved={thread.resolved} />
+      <CommentRow comment={thread} index={index} onSeek={onSeek} resolved={thread.resolved} />
 
       {/* Action row — always visible, mirrors the reference card. */}
-      <div className="mt-2 flex items-center gap-3 pl-9 text-[11px] text-fg-soft">
+      <div className="mt-2 flex items-center gap-3 pl-[42px] text-[11px] text-fg-soft">
+        <EmojiButton onPick={(em) => openReplyWith(em + " ")} />
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            setReplying(true);
+            openReplyWith();
           }}
-          className="hover:text-fg-strong"
+          className="font-medium hover:text-fg-strong"
         >
           Reply
         </button>
@@ -562,11 +681,20 @@ function ThreadView({
             onToggleResolved(thread.id);
           }}
           className={cn(
-            "hover:text-fg-strong",
-            thread.resolved && "text-emerald-300",
+            "inline-flex items-center gap-1 font-medium hover:text-fg-strong",
+            thread.resolved && "text-emerald-400",
           )}
         >
-          {thread.resolved ? "Unresolve" : "Resolve"}
+          {thread.resolved ? (
+            <>
+              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm3.7 6.3-4 4a1 1 0 0 1-1.4 0l-2-2a1 1 0 1 1 1.4-1.4l1.3 1.29 3.3-3.29a1 1 0 0 1 1.4 1.4z" />
+              </svg>
+              Resolved
+            </>
+          ) : (
+            "Resolve"
+          )}
         </button>
         <button
           type="button"
@@ -587,7 +715,7 @@ function ThreadView({
             e.stopPropagation();
             setShowReplies((s) => !s);
           }}
-          className="mt-2 flex items-center gap-1 pl-9 text-xs text-fg-soft hover:text-fg-strong"
+          className="mt-2 flex items-center gap-1 pl-[42px] text-xs font-medium text-pink-400 hover:text-pink-300"
         >
           {thread.replies.length} {thread.replies.length === 1 ? "Reply" : "Replies"}
           <svg
@@ -609,30 +737,43 @@ function ThreadView({
         ))}
 
       {replying && (
-        <div className="mt-2 flex items-end gap-2 pl-9">
-          <textarea
-            autoFocus
-            value={replyDraft}
-            onChange={(e) => setReplyDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submitReply();
-              }
-              if (e.key === "Escape") setReplying(false);
-            }}
-            rows={1}
-            placeholder="Reply…"
-            className="min-h-[32px] flex-1 resize-none rounded-md border border-line bg-base px-2 py-1 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent-hover focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={submitReply}
-            disabled={!replyDraft.trim()}
-            className="mb-0.5 shrink-0 rounded bg-accent px-2 py-1 text-xs text-white hover:bg-accent-hover disabled:opacity-40"
-          >
-            Reply
-          </button>
+        <div className="mt-2 pl-[42px]" onClick={(e) => e.stopPropagation()}>
+          <div className="rounded-lg border border-line bg-base p-1.5 transition-colors focus-within:border-pink-500/60">
+            <textarea
+              autoFocus
+              value={replyDraft}
+              onChange={(e) => setReplyDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submitReply();
+                }
+                if (e.key === "Escape") setReplying(false);
+              }}
+              rows={1}
+              placeholder="Leave your reply here…"
+              className="min-h-[28px] w-full resize-none bg-transparent px-1 text-sm text-fg-strong placeholder:text-fg-faint focus:outline-none"
+            />
+            <div className="mt-0.5 flex items-center gap-0.5">
+              <EmojiButton onPick={(em) => setReplyDraft((d) => d + em)} />
+              <AttachButton />
+              <button
+                type="button"
+                onClick={() => setReplying(false)}
+                className="ml-auto rounded-md px-2.5 py-1 text-xs font-medium text-fg-soft hover:bg-hover hover:text-fg-strong"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitReply}
+                disabled={!replyDraft.trim()}
+                className="rounded-md bg-pink-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-pink-400 disabled:opacity-40"
+              >
+                Reply
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -641,88 +782,76 @@ function ThreadView({
 
 function CommentRow({
   comment,
+  index,
   onSeek,
   isReply,
   resolved,
 }: {
   comment: Comment;
+  index?: number;
   onSeek: (t: number) => void;
   isReply?: boolean;
   resolved?: boolean;
 }) {
-  const isRange = comment.tEnd !== undefined && comment.tEnd > comment.t;
   return (
     <div className="flex gap-2.5">
       <Avatar label={comment.author.name || comment.author.email} reply={isReply} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-fg-strong">
+          <span className="truncate text-sm font-semibold text-fg-strong">
             {comment.author.name || comment.author.email}
           </span>
           <span className="shrink-0 text-[11px] text-fg-faint">
             {formatRelative(comment.createdAt)}
           </span>
-          {/* Resolved badge takes precedence; otherwise a range comment shows
-              its in→out span here (top-right), matching the reference. */}
-          {!isReply && resolved ? (
-            <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
-              <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
-              </svg>
-              Resolved
+          {/* Top-level comments show their #index and a public (globe) marker,
+              mirroring the reference card. */}
+          {!isReply && (
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-fg-faint">
+              {index !== undefined && <span>#{index}</span>}
+              <GlobeIcon className="h-3.5 w-3.5" />
             </span>
-          ) : !isReply && isRange ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSeek(comment.t);
-              }}
-              className="ml-auto shrink-0 rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[10px] text-accent hover:bg-accent/25"
-            >
-              {formatRange(comment.t, comment.tEnd)}
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-1">
-          {/* Point comments lead with an inline timecode chip; range comments
-              carry their span in the header chip above. */}
-          {!isReply && !isRange && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSeek(comment.t);
-              }}
-              className={cn(
-                "mr-1.5 inline-block rounded bg-elevated px-1.5 py-0.5 align-middle font-mono text-[11px] hover:bg-base hover:text-accent",
-                resolved ? "text-fg-soft" : "text-accent",
-              )}
-            >
-              {formatRange(comment.t, comment.tEnd)}
-            </button>
           )}
-          <span
-            className={cn(
-              "align-middle text-sm text-fg",
-              resolved && "text-fg-faint line-through",
-            )}
-          >
-            {comment.body}
-          </span>
         </div>
+
+        {/* Timecode / range chip in coral, with a stopwatch — seeks on click.
+            Replies inherit the thread's time and don't repeat it. */}
+        {!isReply && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSeek(comment.t);
+            }}
+            className="mt-1 inline-flex items-center gap-1 rounded bg-rose-500/10 px-1.5 py-0.5 font-mono text-[11px] text-rose-300 transition-colors hover:bg-rose-500/20 hover:text-rose-200"
+          >
+            <StopwatchIcon className="h-3 w-3" />
+            {formatRange(comment.t, comment.tEnd)}
+          </button>
+        )}
+
+        <p
+          className={cn(
+            "mt-1 whitespace-pre-wrap break-words text-sm",
+            resolved ? "text-fg-faint line-through" : "text-fg",
+          )}
+        >
+          {comment.body}
+        </p>
       </div>
     </div>
   );
 }
 
+// Pink-forward palette to match the review theme; still hashed per author so
+// distinct collaborators stay visually distinguishable.
 const PALETTES = [
-  "bg-accent/20 text-accent",
-  "bg-emerald-500/20 text-emerald-200",
-  "bg-amber-500/20 text-amber-200",
-  "bg-violet-500/20 text-violet-200",
-  "bg-rose-500/20 text-rose-200",
-  "bg-cyan-500/20 text-cyan-200",
+  "bg-pink-500 text-white",
+  "bg-fuchsia-500 text-white",
+  "bg-rose-500 text-white",
+  "bg-violet-500 text-white",
+  "bg-purple-500 text-white",
+  "bg-pink-600 text-white",
 ];
 
 function hashIndex(s: string, mod: number): number {
@@ -736,8 +865,8 @@ function Avatar({ label, reply }: { label: string; reply?: boolean }) {
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full font-semibold",
-        reply ? "h-6 w-6 text-[10px]" : "h-7 w-7 text-[11px]",
+        "flex shrink-0 items-center justify-center rounded-lg font-semibold shadow-sm",
+        reply ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-xs",
         palette,
       )}
       aria-hidden

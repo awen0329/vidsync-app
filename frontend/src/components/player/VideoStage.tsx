@@ -454,7 +454,7 @@ export function VideoStage({
         >
           <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-elevated" />
           <div
-            className="absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-full bg-accent"
+            className="absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-full bg-pink-500"
             style={{ width: `${pct}%` }}
           />
           {/* Pending in→out selection: an emerald range whose bracket handles
@@ -514,7 +514,7 @@ export function VideoStage({
                   }}
                   className={cn(
                     "absolute top-1/2 h-2 -translate-y-1/2 rounded-full border border-base transition-all hover:brightness-125",
-                    c.resolved ? "bg-emerald-400" : "bg-amber-400",
+                    c.resolved ? "bg-emerald-400" : "bg-pink-500",
                     activeMarkerId === c.id && "ring-2 ring-white/70",
                   )}
                   style={{
@@ -534,7 +534,7 @@ export function VideoStage({
                   }}
                   className={cn(
                     "absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform hover:scale-125",
-                    c.resolved ? "bg-emerald-400" : "bg-amber-400",
+                    c.resolved ? "bg-emerald-400" : "bg-pink-500",
                     activeMarkerId === c.id && "scale-125 ring-2 ring-white/70",
                   )}
                   style={{ left: `${Math.min(100, (c.t / duration) * 100)}%` }}
@@ -599,9 +599,9 @@ export function VideoStage({
               timecodes live in the range editor strip below). */}
           {selection && (
             <div className="ml-2 flex items-center gap-1.5 rounded-lg bg-elevated px-2 py-1 ring-1 ring-line">
-              <span className="font-mono text-[11px] text-accent">IN {formatClock(selection.in)}</span>
+              <span className="font-mono text-[11px] text-emerald-300">IN {formatClock(selection.in)}</span>
               <span className="text-fg-faint">→</span>
-              <span className="font-mono text-[11px] text-accent">OUT {formatClock(selection.out)}</span>
+              <span className="font-mono text-[11px] text-emerald-300">OUT {formatClock(selection.out)}</span>
             </div>
           )}
 
