@@ -1,5 +1,5 @@
 import { useState } from "react";
-import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
+import EmojiPicker, { Emoji, EmojiStyle, Theme } from "emoji-picker-react";
 import { cn } from "../../lib/utils";
 import { humanBytes } from "../../lib/format";
 import { initialsOf } from "../PresenceAvatar";
@@ -77,9 +77,47 @@ const COMMENT_FILTERS: Record<CommentFilter, string> = {
   resolved: "Resolved",
 };
 
+// emojiToUnified turns an emoji character into the dash-joined lowercase
+// codepoint string emoji-picker-react's <Emoji> wants (e.g. "👩‍💻" →
+// "1f469-200d-1f4bb"). We store reactions as the char (compact, portable) and
+// only convert here for image rendering.
+function emojiToUnified(emoji: string): string {
+  return Array.from(emoji)
+    .map((ch) => ch.codePointAt(0)!.toString(16))
+    .join("-");
+}
+
+// Splits text into runs, capturing emoji clusters (single pictographs plus
+// their variation selectors, ZWJ sequences, and skin-tone modifiers).
+const EMOJI_SPLIT_RE =
+  /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*)/gu;
+const EMOJI_HEAD_RE = /^\p{Extended_Pictographic}/u;
+
+// EmojiText renders a string with its emoji drawn as Apple-set images (the
+// rest as plain text), so comment bodies look the same as the picker/pills
+// even on a host without a colour-emoji font.
+function EmojiText({ text }: { text: string }) {
+  if (!text) return null;
+  const parts = text.split(EMOJI_SPLIT_RE);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part && EMOJI_HEAD_RE.test(part) ? (
+          <span key={i} className="mx-[0.5px] inline-block translate-y-[2px]">
+            <Emoji unified={emojiToUnified(part)} emojiStyle={EmojiStyle.APPLE} size={16} lazyLoad />
+          </span>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 // EmojiButton: a face icon that opens a full emoji picker (categories, search,
-// recently used). Picking one calls onPick. We render native (OS-font) emoji
-// so it works offline in the desktop WebView — no CDN image fetch.
+// recently used). Picking one calls onPick. Emojis render as Apple-set images
+// (not the OS font) so they look like other chat apps and survive a host
+// without a colour-emoji font.
 function EmojiButton({
   onPick,
   align = "left",
@@ -124,7 +162,7 @@ function EmojiButton({
                 setOpen(false);
               }}
               theme={Theme.DARK}
-              emojiStyle={EmojiStyle.NATIVE}
+              emojiStyle={EmojiStyle.APPLE}
               lazyLoadEmojis
               width={320}
               height={400}
@@ -858,7 +896,7 @@ function CommentRow({
             resolved ? "text-fg-faint line-through" : "text-fg",
           )}
         >
-          {comment.body}
+          <EmojiText text={comment.body} />
         </p>
 
         {/* Emoji reactions: each pill toggles the current user's reaction;
@@ -881,7 +919,7 @@ function CommentRow({
                     : "bg-elevated text-fg-soft ring-line hover:bg-hover",
                 )}
               >
-                <span className="text-sm leading-none">{r.emoji}</span>
+                <Emoji unified={emojiToUnified(r.emoji)} emojiStyle={EmojiStyle.APPLE} size={15} lazyLoad />
                 <span className="tabular-nums">{r.count}</span>
               </button>
             ))}
@@ -931,7 +969,7 @@ function AddReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
                 setOpen(false);
               }}
               theme={Theme.DARK}
-              emojiStyle={EmojiStyle.NATIVE}
+              emojiStyle={EmojiStyle.APPLE}
               lazyLoadEmojis
               width={300}
               height={380}
