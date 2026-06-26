@@ -711,6 +711,13 @@ export function FileGrid({
   const totalBytes = fileEntries.reduce((s, f) => s + f.size, 0);
   const selectedFiles = fileEntries.filter((f) => selected.has(f.path));
   const selectedBytes = selectedFiles.reduce((s, f) => s + f.size, 0);
+  // Clicking a card selects ONLY that file (single-select); the per-card
+  // checkbox toggles multi-select; the header checkbox selects/clears all.
+  const selectOnly = (path: string) => setSelected(new Set([path]));
+  const selectAllFiles = () => setSelected(new Set(fileEntries.map((f) => f.path)));
+  const clearSelection = () => setSelected(new Set());
+  const allSelected = fileEntries.length > 0 && selectedFiles.length === fileEntries.length;
+  const someSelected = selectedFiles.length > 0 && !allSelected;
   const countSummary = [
     folderCount > 0
       ? `${folderCount.toLocaleString()} folder${folderCount === 1 ? "" : "s"}`
@@ -736,9 +743,37 @@ export function FileGrid({
           onOpenTeam={onOpenTeam}
         />
         {/* Folder/file count instead of a redundant "Files" breadcrumb —
-            the project top bar already carries the path. */}
+            the project top bar already carries the path. A master checkbox
+            in front selects / clears every file in view. */}
         {!filter && (
-          <div className="px-0.5 text-xs text-fg-faint">{countSummary}</div>
+          <div className="flex items-center gap-2 px-0.5 text-xs text-fg-faint">
+            {fileCount > 0 && (
+              <button
+                type="button"
+                onClick={() => (allSelected ? clearSelection() : selectAllFiles())}
+                aria-label={allSelected ? "Deselect all" : "Select all"}
+                aria-pressed={allSelected}
+                title={allSelected ? "Deselect all" : "Select all"}
+                className={cn(
+                  "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                  allSelected || someSelected
+                    ? "border-accent bg-accent text-white"
+                    : "border-line text-transparent hover:border-line-strong",
+                )}
+              >
+                {someSelected ? (
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3" aria-hidden>
+                    <rect x="4.5" y="9" width="11" height="2" rx="1" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3" aria-hidden>
+                    <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+                  </svg>
+                )}
+              </button>
+            )}
+            <span>{countSummary}</span>
+          </div>
         )}
       </div>
       {/* Scrollable list region; toolbar + count stay anchored above. */}
@@ -767,6 +802,7 @@ export function FileGrid({
                   unread={unread.isVideoUnread(e.path)}
                   selected={selected.has(e.path)}
                   active={preview?.path === e.path}
+                  onSelect={() => selectOnly(e.path)}
                   onToggleSelect={() => toggleSelect(e.path)}
                   onContextMenu={(x, y) => setMenu({ x, y, file: e })}
                   onPreview={() => openPreview(e)}
@@ -802,6 +838,7 @@ export function FileGrid({
                   appearance={appearance}
                   selected={selected.has(e.path)}
                   active={preview?.path === e.path}
+                  onSelect={() => selectOnly(e.path)}
                   onToggleSelect={() => toggleSelect(e.path)}
                   onContextMenu={(x, y) => setMenu({ x, y, file: e })}
                   onPreview={() => openPreview(e)}
@@ -1400,6 +1437,7 @@ function FileTile({
   appearance,
   selected = false,
   active = false,
+  onSelect,
   onToggleSelect,
   onContextMenu,
   onPreview,
@@ -1412,6 +1450,9 @@ function FileTile({
   // open in the review player. Both draw an accent highlight border.
   selected?: boolean;
   active?: boolean;
+  // onSelect = single-select (card click); onToggleSelect = multi-select
+  // (checkbox click).
+  onSelect?: () => void;
   onToggleSelect?: () => void;
   onContextMenu: (x: number, y: number) => void;
   onPreview: () => void;
@@ -1460,9 +1501,9 @@ function FileTile({
       )}
       title={`${file.path}\n${humanBytes(file.size)}`}
       onClick={() => {
-        // Clicking the card selects it (ticks its checkbox) and opens the
-        // preview surface; the checkbox button itself still toggles on its own.
-        onToggleSelect?.();
+        // Clicking the card selects only this file and opens the preview
+        // surface; the checkbox button toggles multi-select on its own.
+        onSelect?.();
         if (openable) onPreview();
       }}
       onMouseEnter={onEnter}
@@ -1745,6 +1786,7 @@ function FileRow({
   unread,
   selected = false,
   active = false,
+  onSelect,
   onToggleSelect,
   onContextMenu,
   onPreview,
@@ -1754,6 +1796,7 @@ function FileRow({
   unread?: boolean;
   selected?: boolean;
   active?: boolean;
+  onSelect?: () => void;
   onToggleSelect?: () => void;
   onContextMenu: (x: number, y: number) => void;
   onPreview: () => void;
@@ -1769,7 +1812,7 @@ function FileRow({
         openable ? "cursor-pointer" : "cursor-default",
       )}
       onClick={() => {
-        onToggleSelect?.();
+        onSelect?.();
         if (openable) onPreview();
       }}
       onContextMenu={(e) => {
