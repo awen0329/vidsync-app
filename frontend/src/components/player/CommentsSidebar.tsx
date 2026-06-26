@@ -6,6 +6,8 @@ import type { Comment, CommentThread, UseComments } from "./comments";
 import type { MediaInfo, Selection } from "./VideoStage";
 import { formatClock, formatRange, formatRelative } from "./format";
 import type { VideoPreviewFile } from "../VideoPreviewModal";
+import { ALL_FIELDS } from "../../lib/mediaFields";
+import { FieldGlyph } from "../FieldGlyph";
 
 type Tab = "comments" | "fields";
 
@@ -85,8 +87,6 @@ function FieldsTab({
     : "";
   const kindWord =
     file.kind === "audio" ? "Audio" : file.kind === "image" ? "Image" : "Video";
-  const slash = file.path.lastIndexOf("/");
-  const folder = slash >= 0 ? file.path.slice(0, slash) : "";
   const resolution =
     media && media.width > 0 ? `${media.width} × ${media.height}` : "";
   const duration =
@@ -101,19 +101,26 @@ function FieldsTab({
       })
     : "";
 
-  const fields: { label: string; value: string }[] = [
-    { label: "Name", value: file.name },
-    { label: "File Type", value: kindWord },
-    { label: "Format", value: ext },
-    { label: "Location", value: folder ? `${folder}/` : "Project root" },
-    { label: "File Size", value: humanBytes(file.size) },
-    { label: "Resolution", value: resolution },
-    { label: "Resolution - Width", value: media?.width ? `${media.width}` : "" },
-    { label: "Resolution - Height", value: media?.height ? `${media.height}` : "" },
-    { label: "Duration", value: duration },
-    { label: "Comment Count", value: `${comments.pins.length}` },
-    { label: "Date Uploaded", value: created },
-  ];
+  // Values we can derive from the file + loaded media element. Everything
+  // else in the catalog renders empty (the daemon doesn't extract full
+  // ffprobe metadata yet) so the Only Empty / Only Filled filters stay real.
+  const values: Record<string, string> = {
+    Name: file.name,
+    Filename: file.name,
+    "File Type": kindWord,
+    Format: ext,
+    "File Size": humanBytes(file.size),
+    Duration: duration,
+    "Start Time": duration ? formatClock(0) : "",
+    "End Time": duration,
+    "Resolution - Width": media?.width ? `${media.width}` : "",
+    "Resolution - Height": media?.height ? `${media.height}` : "",
+    "Comment Count": `${comments.pins.length}`,
+  };
+  const fields = ALL_FIELDS.map((f) => ({
+    ...f,
+    value: values[f.label] ?? "",
+  }));
 
   const ql = q.trim().toLowerCase();
   const shown = fields.filter((f) => {
@@ -214,27 +221,44 @@ function FieldsTab({
       </div>
 
       {showSearch && (
-        <input
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search fields…"
-          className="mt-2 w-full rounded-lg border border-line bg-base px-3 py-1.5 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none"
-        />
+        <div className="relative mt-2">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search fields…"
+            className="w-full rounded-lg border border-line bg-base px-3 py-1.5 pr-8 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (q) setQ("");
+              else setShowSearch(false);
+            }}
+            aria-label="Clear search"
+            title="Clear search"
+            className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-fg-faint transition-colors hover:bg-hover hover:text-fg-strong"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden>
+              <path d="M10 8.6 5.7 4.3 4.3 5.7 8.6 10l-4.3 4.3 1.4 1.4L10 11.4l4.3 4.3 1.4-1.4L11.4 10l4.3-4.3-1.4-1.4z" />
+            </svg>
+          </button>
+        </div>
       )}
 
       <div className="mt-2 space-y-px">
         {shown.map((f) => (
           <div
             key={f.label}
-            className="flex items-center gap-3 rounded-md px-1 py-2"
+            className="flex items-center gap-2.5 rounded-md px-1 py-2"
           >
+            <FieldGlyph icon={f.icon} />
             <span className="min-w-0 flex-1 truncate text-[13px] text-fg-soft">
               {f.label}
             </span>
             <span
               className={cn(
-                "shrink-0 truncate text-right text-[13px]",
+                "max-w-[45%] shrink-0 truncate text-right text-[13px]",
                 f.value ? "text-fg-strong" : "text-fg-faint",
               )}
             >

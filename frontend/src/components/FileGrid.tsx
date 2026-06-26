@@ -24,6 +24,8 @@ import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { FileDetailsModal, type FileDetails } from "./FileDetailsModal";
 import { UnreadBadge } from "./UnreadBadge";
 import { PresenceAvatar, type PresenceState } from "./PresenceAvatar";
+import { FieldGlyph } from "./FieldGlyph";
+import { PRIMARY_FIELDS, META_FIELDS, type MediaField } from "../lib/mediaFields";
 import { useUnread } from "../api/cloud/useUnread";
 import type { VideoPreviewFile } from "./VideoPreviewModal";
 
@@ -73,16 +75,26 @@ type SortKey =
   | "name-asc"
   | "name-desc"
   | "size-desc"
-  | "size-asc";
+  | "size-asc"
+  | "status";
 
-const SORT_LABELS: { value: SortKey; label: string }[] = [
-  { value: "recent", label: "Recent" },
-  { value: "oldest", label: "Oldest" },
-  { value: "name-asc", label: "Name (A–Z)" },
-  { value: "name-desc", label: "Name (Z–A)" },
-  { value: "size-desc", label: "Largest" },
-  { value: "size-asc", label: "Smallest" },
-];
+// Maps a Sort-menu field label to the sort it applies. Fields not listed
+// (most metadata) aren't sortable — the daemon doesn't extract that data.
+const FIELD_SORT: Record<string, SortKey> = {
+  Custom: "recent",
+  Name: "name-asc",
+  Filename: "name-asc",
+  Status: "status",
+  "File Size": "size-desc",
+};
+
+// Reverse: which field label is highlighted for the current sort.
+function sortToFieldLabel(sort: SortKey): string {
+  if (sort === "name-asc" || sort === "name-desc") return "Name";
+  if (sort === "size-desc" || sort === "size-asc") return "File Size";
+  if (sort === "status") return "Status";
+  return "Custom";
+}
 
 // Appearance: per-user grid display preferences, exposed through the
 // toolbar's Appearance popover (mirrors Frame.io). Persisted to
@@ -996,11 +1008,47 @@ function SortControl({
     };
   }, [open]);
 
-  const current = SORT_LABELS.find((s) => s.value === sort);
+  const activeLabel = sortToFieldLabel(sort);
   const ql = q.trim().toLowerCase();
-  const shown = ql
-    ? SORT_LABELS.filter((s) => s.label.toLowerCase().includes(ql))
-    : SORT_LABELS;
+  const match = (f: MediaField) => !ql || f.label.toLowerCase().includes(ql);
+  const primary = PRIMARY_FIELDS.filter(match);
+  const meta = META_FIELDS.filter(match);
+
+  const renderField = (f: MediaField) => {
+    const key = FIELD_SORT[f.label];
+    const sortable = !!key;
+    const active = sortable && f.label === activeLabel;
+    return (
+      <button
+        key={f.label}
+        type="button"
+        disabled={!sortable}
+        onClick={() => {
+          if (key) {
+            onSort(key);
+            setOpen(false);
+          }
+        }}
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+          !sortable
+            ? "cursor-default text-fg-faint/70"
+            : active
+              ? "text-fg-strong"
+              : "text-fg hover:bg-hover hover:text-fg-strong",
+        )}
+        title={sortable ? undefined : "Not sortable yet"}
+      >
+        <FieldGlyph icon={f.icon} />
+        <span className="flex-1 truncate">{f.label}</span>
+        {active && (
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 text-accent" aria-hidden>
+            <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+          </svg>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="relative shrink-0" ref={ref}>
@@ -1017,10 +1065,10 @@ function SortControl({
         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 text-fg-soft" aria-hidden>
           <path d="M6 5v10M6 15l-2.5-2.5M6 15l2.5-2.5M13 15V5M13 5l-2.5 2.5M13 5l2.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        {!compact && <span className="hidden sm:inline">{current?.label ?? "Sort"}</span>}
+        {!compact && <span className="hidden sm:inline">{activeLabel}</span>}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-60 rounded-xl border border-line-strong bg-elevated p-2 shadow-2xl shadow-black/60">
+        <div className="absolute left-0 top-full z-30 mt-2 w-64 rounded-xl border border-line-strong bg-elevated p-2 shadow-2xl shadow-black/60">
           <div className="px-1.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-fg-faint">
             Sort by
           </div>
@@ -1031,37 +1079,17 @@ function SortControl({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search fields"
-              className="w-full rounded-lg border border-line bg-base py-1.5 pl-9 pr-3 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none"
+              className="w-full rounded-lg border border-line bg-base py-1.5 pl-9 pr-8 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none"
             />
+            {q && <ClearSearchButton onClear={() => setQ("")} />}
           </div>
-          <div className="max-h-64 overflow-y-auto">
-            {shown.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => {
-                  onSort(s.value);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                  s.value === sort
-                    ? "text-fg-strong"
-                    : "text-fg hover:bg-hover hover:text-fg-strong",
-                )}
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-panel text-[9px] font-semibold text-fg-faint ring-1 ring-line">
-                  {s.label[0]}
-                </span>
-                <span className="flex-1 truncate">{s.label}</span>
-                {s.value === sort && (
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 text-accent" aria-hidden>
-                    <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
-                  </svg>
-                )}
-              </button>
-            ))}
-            {shown.length === 0 && (
+          <div className="max-h-72 overflow-y-auto">
+            {primary.map(renderField)}
+            {primary.length > 0 && meta.length > 0 && (
+              <div className="my-1 h-px bg-line" />
+            )}
+            {meta.map(renderField)}
+            {primary.length === 0 && meta.length === 0 && (
               <p className="px-2 py-3 text-center text-xs text-fg-faint">
                 No matching field
               </p>
@@ -2095,6 +2123,10 @@ function compareFiles(a: FileEntry, b: FileEntry, sort: SortKey): number {
       return b.size - a.size || a.name.localeCompare(b.name);
     case "size-asc":
       return a.size - b.size || a.name.localeCompare(b.name);
+    case "status": {
+      const rs = displayRank(a.state) - displayRank(b.state);
+      return rs !== 0 ? rs : a.name.localeCompare(b.name);
+    }
   }
 }
 
