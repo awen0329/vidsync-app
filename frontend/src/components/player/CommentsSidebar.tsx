@@ -1,4 +1,5 @@
 import { useState } from "react";
+import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 import { cn } from "../../lib/utils";
 import { humanBytes } from "../../lib/format";
 import { initialsOf } from "../PresenceAvatar";
@@ -76,11 +77,9 @@ const COMMENT_FILTERS: Record<CommentFilter, string> = {
   resolved: "Resolved",
 };
 
-// A small set of quick emojis for the composer pickers.
-const QUICK_EMOJIS = ["👍", "❤️", "😂", "🎉", "🔥", "👀", "🙏", "✅", "😮", "😢"];
-
-// EmojiButton: a face icon that opens a tiny emoji palette; picking one calls
-// onPick (the composers append it to their draft).
+// EmojiButton: a face icon that opens a full emoji picker (categories, search,
+// recently used). Picking one calls onPick. We render native (OS-font) emoji
+// so it works offline in the desktop WebView — no CDN image fetch.
 function EmojiButton({
   onPick,
   align = "left",
@@ -115,23 +114,23 @@ function EmojiButton({
           <div
             onClick={(e) => e.stopPropagation()}
             className={cn(
-              "absolute bottom-full z-40 mb-1.5 flex w-max gap-0.5 rounded-xl border border-line-strong bg-elevated p-1.5 shadow-2xl shadow-black/60",
+              "absolute bottom-full z-40 mb-1.5 overflow-hidden rounded-xl shadow-2xl shadow-black/60",
               align === "right" ? "right-0" : "left-0",
             )}
           >
-            {QUICK_EMOJIS.map((em) => (
-              <button
-                key={em}
-                type="button"
-                onClick={() => {
-                  onPick(em);
-                  setOpen(false);
-                }}
-                className="rounded-lg px-1.5 py-1 text-base leading-none hover:bg-hover"
-              >
-                {em}
-              </button>
-            ))}
+            <EmojiPicker
+              onEmojiClick={(d) => {
+                onPick(d.emoji);
+                setOpen(false);
+              }}
+              theme={Theme.DARK}
+              emojiStyle={EmojiStyle.NATIVE}
+              lazyLoadEmojis
+              width={320}
+              height={400}
+              previewConfig={{ showPreview: true }}
+              skinTonesDisabled
+            />
           </div>
         </>
       )}
@@ -173,12 +172,15 @@ function StopwatchIcon({ className }: { className?: string }) {
   );
 }
 
-// GlobeIcon: the "public" indicator shown top-right of a top-level comment.
-function GlobeIcon({ className }: { className?: string }) {
+// SharedIcon: our own "visible to everyone on this project" marker — a small
+// group-of-people glyph (replaces the Frame.io-style globe).
+function SharedIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden>
-      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M3 10h14M10 3c2 2.2 2 11.8 0 14M10 3c-2 2.2-2 11.8 0 14" stroke="currentColor" strokeWidth="1.4" />
+      <title>Visible to everyone on this project</title>
+      <circle cx="7" cy="8" r="2.4" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M2.5 16c0-2.2 2-3.8 4.5-3.8s4.5 1.6 4.5 3.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M13 6.2a2.2 2.2 0 0 1 0 4.1M14.5 15.6c.6-.3 1-.9 1-1.6 0-1.3-1-2.4-2.6-2.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -541,6 +543,7 @@ function CommentsTab({
               onReply={comments.addReply}
               onToggleResolved={comments.toggleResolved}
               onDelete={comments.deleteComment}
+              onToggleReaction={comments.toggleReaction}
             />
           ))
         )}
@@ -624,6 +627,7 @@ function ThreadView({
   onReply,
   onToggleResolved,
   onDelete,
+  onToggleReaction,
 }: {
   thread: CommentThread;
   index: number;
@@ -633,6 +637,7 @@ function ThreadView({
   onReply: (parentId: string, body: string) => void;
   onToggleResolved: (id: string) => void;
   onDelete: (id: string) => void;
+  onToggleReaction: (id: string, emoji: string) => void;
 }) {
   const [showReplies, setShowReplies] = useState(true);
   const [replyDraft, setReplyDraft] = useState("");
@@ -659,11 +664,16 @@ function ThreadView({
           : "hover:bg-hover/50",
       )}
     >
-      <CommentRow comment={thread} index={index} onSeek={onSeek} resolved={thread.resolved} />
+      <CommentRow
+        comment={thread}
+        index={index}
+        onSeek={onSeek}
+        resolved={thread.resolved}
+        onReact={(em) => onToggleReaction(thread.id, em)}
+      />
 
       {/* Action row — always visible, mirrors the reference card. */}
       <div className="mt-2 flex items-center gap-3 pl-[42px] text-[11px] text-fg-soft">
-        <EmojiButton onPick={(em) => openReplyWith(em + " ")} />
         <button
           type="button"
           onClick={(e) => {
@@ -732,7 +742,12 @@ function ThreadView({
       {showReplies &&
         thread.replies.map((reply) => (
           <div key={reply.id} className="mt-3 pl-6">
-            <CommentRow comment={reply} onSeek={onSeek} isReply />
+            <CommentRow
+              comment={reply}
+              onSeek={onSeek}
+              isReply
+              onReact={(em) => onToggleReaction(reply.id, em)}
+            />
           </div>
         ))}
 
@@ -786,13 +801,16 @@ function CommentRow({
   onSeek,
   isReply,
   resolved,
+  onReact,
 }: {
   comment: Comment;
   index?: number;
   onSeek: (t: number) => void;
   isReply?: boolean;
   resolved?: boolean;
+  onReact?: (emoji: string) => void;
 }) {
+  const reactions = comment.reactions ?? [];
   return (
     <div className="flex gap-2.5">
       <Avatar label={comment.author.name || comment.author.email} reply={isReply} />
@@ -804,12 +822,16 @@ function CommentRow({
           <span className="shrink-0 text-[11px] text-fg-faint">
             {formatRelative(comment.createdAt)}
           </span>
-          {/* Top-level comments show their #index and a public (globe) marker,
-              mirroring the reference card. */}
+          {/* Top-level comments show a pink index badge and a "shared with the
+              project" people glyph — our own marks, not Frame.io's globe. */}
           {!isReply && (
-            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-fg-faint">
-              {index !== undefined && <span>#{index}</span>}
-              <GlobeIcon className="h-3.5 w-3.5" />
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              {index !== undefined && (
+                <span className="rounded-md bg-pink-500/12 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-pink-300">
+                  #{index}
+                </span>
+              )}
+              <SharedIcon className="h-3.5 w-3.5 text-fg-faint" />
             </span>
           )}
         </div>
@@ -838,7 +860,87 @@ function CommentRow({
         >
           {comment.body}
         </p>
+
+        {/* Emoji reactions: each pill toggles the current user's reaction;
+            the trailing button opens the picker to add a new one. */}
+        {(reactions.length > 0 || onReact) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            {reactions.map((r) => (
+              <button
+                key={r.emoji}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReact?.(r.emoji);
+                }}
+                title={r.mine ? "Remove your reaction" : "React"}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs leading-none ring-1 transition-colors",
+                  r.mine
+                    ? "bg-pink-500/15 text-pink-200 ring-pink-500/40"
+                    : "bg-elevated text-fg-soft ring-line hover:bg-hover",
+                )}
+              >
+                <span className="text-sm leading-none">{r.emoji}</span>
+                <span className="tabular-nums">{r.count}</span>
+              </button>
+            ))}
+            {onReact && <AddReactionButton onPick={onReact} />}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// AddReactionButton: a compact "react" trigger (smiley + plus) that opens the
+// emoji picker; picking calls onPick to toggle that reaction.
+function AddReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        title="Add reaction"
+        aria-label="Add reaction"
+        className={cn(
+          "inline-flex items-center gap-0.5 rounded-full px-1.5 py-1 text-fg-faint ring-1 ring-line transition-colors hover:bg-hover hover:text-fg-strong",
+          open && "bg-hover text-pink-400",
+        )}
+      >
+        <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden>
+          <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M6.8 7.4h.01M11.2 7.4h.01M6.6 11c1.1.9 3.1.9 4.2 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <span className="text-[11px] font-semibold leading-none">+</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-full left-0 z-40 mb-1.5 overflow-hidden rounded-xl shadow-2xl shadow-black/60"
+          >
+            <EmojiPicker
+              onEmojiClick={(d) => {
+                onPick(d.emoji);
+                setOpen(false);
+              }}
+              theme={Theme.DARK}
+              emojiStyle={EmojiStyle.NATIVE}
+              lazyLoadEmojis
+              width={300}
+              height={380}
+              previewConfig={{ showPreview: false }}
+              skinTonesDisabled
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

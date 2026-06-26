@@ -35,14 +35,21 @@ export interface VideoCommentSummary {
 }
 
 // CommentStreamEvent is one frame from the SSE comment stream: "upsert"
-// carries the full comment (create/resolve); "delete" carries just its id.
+// carries the full comment (create/resolve); "delete" carries just its id;
+// "reaction" carries an emoji-count delta on a comment.
 export interface CommentStreamEvent {
-  type: "upsert" | "delete";
+  type: "upsert" | "delete" | "reaction";
   // Present on the multiplexed per-user stream so the client can route the
   // event to the right project; implied (and harmless) on a per-folder stream.
   folderId?: string;
   comment?: Comment;
   id?: string;
+  reaction?: {
+    commentId: string;
+    emoji: string;
+    delta: number; // +1 added, -1 removed
+    userEmail: string; // actor — lets a client skip its own echo
+  };
 }
 
 export interface CloudClientConfig {
@@ -308,6 +315,16 @@ export class CloudClient {
     return this.request<void>(
       "DELETE",
       `/v1/projects/${encodeURIComponent(folderID)}/comments/${id}`,
+    );
+  }
+
+  // Toggle the caller's emoji reaction on a comment; returns the comment with
+  // its refreshed reaction aggregate (mine flags computed for the caller).
+  toggleReaction(folderID: string, id: string, emoji: string): Promise<Comment> {
+    return this.request<Comment>(
+      "POST",
+      `/v1/projects/${encodeURIComponent(folderID)}/comments/${id}/reactions`,
+      { body: { emoji } },
     );
   }
 

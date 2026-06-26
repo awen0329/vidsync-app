@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useOptionalCloudClient } from "../../api/cloud/provider";
-import { cacheRemove, cacheUpsert, type Comment } from "./comments";
+import { applyReaction, cacheRemove, cacheUpsert, type Comment } from "./comments";
+import type { CommentStreamEvent } from "../../api/cloud/client";
 
 // useCommentStream holds ONE SSE connection for a project's comments while
 // the review player is open, and applies pushed changes straight into the
@@ -23,7 +24,7 @@ const BACKOFF_MAX_MS = 30_000;
 // endpoint can't become a tight reconnect loop hammering the server.
 const HEALTHY_MS = 10_000;
 
-export function useCommentStream(folderID: string): void {
+export function useCommentStream(folderID: string, myEmail = ""): void {
   const client = useOptionalCloudClient();
   const qc = useQueryClient();
 
@@ -33,7 +34,7 @@ export function useCommentStream(folderID: string): void {
     let stopped = false;
     let backoff = BACKOFF_BASE_MS;
 
-    const apply = (ev: { type: string; comment?: Comment; id?: string }) => {
+    const apply = (ev: CommentStreamEvent) => {
       if (ev.type === "upsert" && ev.comment) {
         const c = ev.comment;
         qc.setQueryData<Comment[]>(["comments", folderID, c.videoPath], (prev) =>
@@ -44,6 +45,16 @@ export function useCommentStream(folderID: string): void {
         // from every cached clip list for this folder.
         qc.setQueriesData<Comment[]>({ queryKey: ["comments", folderID] }, (prev) =>
           prev ? cacheRemove(prev, ev.id!) : prev,
+        );
+      } else if (ev.type === "reaction" && ev.reaction) {
+        const rx = ev.reaction;
+        // Skip our own echo — we already applied it optimistically and took
+        // the server's authoritative aggregate from the toggle response.
+        if (myEmail && rx.userEmail === myEmail) return;
+        // No videoPath on the event; apply to whichever cached clip list holds
+        // the comment (a no-op on the others).
+        qc.setQueriesData<Comment[]>({ queryKey: ["comments", folderID] }, (prev) =>
+          prev ? applyReaction(prev, rx.commentId, rx.emoji, rx.delta, false) : prev,
         );
       }
     };
@@ -73,5 +84,5 @@ export function useCommentStream(folderID: string): void {
       stopped = true;
       ctl.abort();
     };
-  }, [client, folderID, qc]);
+  }, [client, folderID, qc, myEmail]);
 }

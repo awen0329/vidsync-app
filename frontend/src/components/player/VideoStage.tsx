@@ -78,14 +78,13 @@ export function VideoStage({
   const [transcodeFallback, setTranscodeFallback] = useState(false);
 
   const [playing, setPlaying] = useState(false);
-  // Video starts muted so autoplay is always permitted (Chromium/WebView2
-  // blocks autoplay-with-sound without a fresh user gesture, which left the
-  // clip paused on the first frame). Audio doesn't autoplay, so it starts
-  // unmuted — pressing play is the gesture, and the point of audio is sound.
-  const [muted, setMuted] = useState(!isAudio);
+  // Nothing autoplays anymore — the user presses the center play button (a
+  // fresh gesture), so both video and audio can start unmuted and just play.
+  const [muted, setMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [rate, setRate] = useState(1);
+  const [speedOpen, setSpeedOpen] = useState(false);
   const [flipped, setFlipped] = useState(false);
   // When a range is set, playback stays inside it and loops back to the in-
   // point at the out-point — so the user can review just the clip they're
@@ -113,19 +112,7 @@ export function VideoStage({
     return frac * duration;
   };
 
-  const PLAYBACK_RATES = [0.5, 1, 1.5, 2];
-  const cycleRate = () =>
-    setRate((r) => PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(r) + 1) % PLAYBACK_RATES.length] ?? 1);
-
-  // Nudge the playhead one frame at a time (assume 30fps — we don't carry the
-  // real frame rate). Pauses first so the stepped frame stays put, matching the
-  // step buttons in the reference player.
-  const FRAME = 1 / 30;
-  const stepFrame = (dir: -1 | 1) => {
-    const v = videoRef.current;
-    if (v && !v.paused) v.pause();
-    previewSeek(currentTime + dir * FRAME);
-  };
+  const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.5, 2];
 
   // Seek the displayed video to a time without changing the range — used so
   // dragging or typing an in/out point shows that exact frame ("the scene at
@@ -353,7 +340,6 @@ export function VideoStage({
           <video
             ref={videoRef}
             src={src}
-            autoPlay={!isAudio}
             playsInline
             muted={muted}
             onClick={togglePlay}
@@ -439,6 +425,22 @@ export function VideoStage({
           <p className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-rose-400">
             {err}
           </p>
+        )}
+        {/* Center play button — shown while paused (and ready), so opening a
+            clip never starts playing on its own; the user clicks to play. */}
+        {src && !preparing && !err && !playing && (
+          <button
+            type="button"
+            onClick={togglePlay}
+            aria-label="Play"
+            className="group absolute inset-0 z-10 flex items-center justify-center"
+          >
+            <span className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/50 text-white shadow-xl ring-1 ring-white/25 backdrop-blur-sm transition group-hover:scale-105 group-hover:bg-pink-500/90 group-hover:ring-white/40">
+              <svg className="ml-1 h-8 w-8" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path d="M6 4l10 6-10 6z" />
+              </svg>
+            </span>
+          </button>
         )}
       </div>
 
@@ -555,16 +557,6 @@ export function VideoStage({
         <div className="flex items-center gap-2.5">
           <button
             type="button"
-            onClick={() => stepFrame(-1)}
-            title="Previous frame"
-            className="shrink-0 text-fg-soft hover:text-fg-strong"
-          >
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path d="M5 4h2v12H5zM8 10l8-6v12z" />
-            </svg>
-          </button>
-          <button
-            type="button"
             onClick={togglePlay}
             aria-label={playing ? "Pause" : "Play"}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-base shadow hover:bg-white/90"
@@ -578,16 +570,6 @@ export function VideoStage({
                 <path d="M6 4l10 6-10 6z" />
               </svg>
             )}
-          </button>
-          <button
-            type="button"
-            onClick={() => stepFrame(1)}
-            title="Next frame"
-            className="shrink-0 text-fg-soft hover:text-fg-strong"
-          >
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path d="M13 4h2v12h-2zM4 4l8 6-8 6z" />
-            </svg>
           </button>
 
           <span className="ml-1 shrink-0 font-mono text-xs tabular-nums text-fg">
@@ -606,15 +588,55 @@ export function VideoStage({
           )}
 
           <div className="ml-auto flex items-center gap-1 text-fg-soft">
-            {/* Playback speed (cycles through 0.5/1/1.5/2). */}
-            <button
-              type="button"
-              onClick={cycleRate}
-              title="Playback speed"
-              className="rounded-md px-2 py-1 font-mono text-[11px] tabular-nums hover:bg-hover hover:text-fg-strong"
-            >
-              {rate}×
-            </button>
+            {/* Playback speed — opens a menu to pick a rate. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setSpeedOpen((o) => !o)}
+                title="Playback speed"
+                aria-haspopup="menu"
+                aria-expanded={speedOpen}
+                className={cn(
+                  "rounded-md px-2 py-1 font-mono text-[11px] tabular-nums hover:bg-hover hover:text-fg-strong",
+                  speedOpen && "bg-hover text-fg-strong",
+                )}
+              >
+                {rate}×
+              </button>
+              {speedOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setSpeedOpen(false)} />
+                  <div
+                    role="menu"
+                    className="absolute bottom-full right-0 z-40 mb-1.5 w-20 rounded-lg border border-line-strong bg-elevated p-1 shadow-2xl shadow-black/60"
+                  >
+                    {PLAYBACK_RATES.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={rate === r}
+                        onClick={() => {
+                          setRate(r);
+                          setSpeedOpen(false);
+                        }}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left font-mono text-[11px] tabular-nums transition-colors hover:bg-hover",
+                          rate === r ? "text-pink-400" : "text-fg",
+                        )}
+                      >
+                        {r}×
+                        {rate === r && (
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden>
+                            <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Comment range: create/clear; drag the timeline handles to adjust. */}
             <button

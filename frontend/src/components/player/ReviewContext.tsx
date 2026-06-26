@@ -60,7 +60,7 @@ export function ReviewProvider({
   };
   // One SSE stream per project — folderID is stable across clip switches, so
   // this outer layer is NOT keyed and the connection survives them.
-  useCommentStream(file.folderID);
+  useCommentStream(file.folderID, author.email);
   return (
     <ReviewInner key={`${file.folderID}:${file.path}`} file={file} author={author}>
       {children}
