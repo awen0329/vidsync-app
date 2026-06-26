@@ -41,7 +41,12 @@ export function CommentsSidebar({
   return (
     <aside className="flex h-full w-full flex-col">
       <nav className="flex items-center gap-4 border-b border-line-strong px-4 pt-3 text-sm">
-        <TabButton label="Comments" active={tab === "comments"} onClick={() => setTab("comments")} />
+        <TabButton
+          label="Comments"
+          active={tab === "comments"}
+          onClick={() => setTab("comments")}
+          count={comments.threads.length}
+        />
         <TabButton label="Fields" active={tab === "fields"} onClick={() => setTab("fields")} />
       </nav>
 
@@ -63,6 +68,13 @@ export function CommentsSidebar({
 }
 
 type FieldFilter = "none" | "empty" | "filled";
+
+type CommentFilter = "all" | "open" | "resolved";
+const COMMENT_FILTERS: Record<CommentFilter, string> = {
+  all: "All comments",
+  open: "Open",
+  resolved: "Resolved",
+};
 
 // FieldsTab: Frame.io-style metadata inspector — a header summary card plus a
 // searchable, filterable list of the clip's fields. Values we can't read from
@@ -291,23 +303,30 @@ function TabButton({
   label,
   active,
   onClick,
+  count,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  count?: number;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "-mb-px border-b-2 pb-2 font-medium transition-colors",
+        "-mb-px flex items-center gap-1.5 border-b-2 pb-2 font-medium transition-colors",
         active
           ? "border-accent-hover text-fg-strong"
           : "border-transparent text-fg-soft hover:text-fg-strong",
       )}
     >
       {label}
+      {count !== undefined && count > 0 && (
+        <span className="rounded-full bg-accent/15 px-1.5 text-[11px] text-accent">
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -330,6 +349,8 @@ function CommentsTab({
   setActiveMarkerId: (id: string | null) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [filter, setFilter] = useState<CommentFilter>("all");
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // Pin to the in→out selection when one is set, otherwise the playhead.
   const start = selection ? selection.in : currentTime;
@@ -341,13 +362,50 @@ function CommentsTab({
     onClearSelection();
   };
 
+  const visible = comments.threads.filter((t) =>
+    filter === "open" ? !t.resolved : filter === "resolved" ? t.resolved : true,
+  );
+
   return (
     <>
-      <header className="px-4 py-3 text-base font-semibold text-fg-strong">
-        Comments
-      </header>
+      {/* Filter bar (replaces a redundant heading — the tab already says
+          "Comments"). Lets the reviewer scope to open vs resolved threads. */}
+      <div className="relative flex items-center justify-between px-4 py-2.5">
+        <button
+          type="button"
+          onClick={() => setFilterOpen((o) => !o)}
+          className="inline-flex items-center gap-1.5 rounded-md bg-elevated px-2 py-1 text-xs text-fg ring-1 ring-line hover:ring-line-strong"
+        >
+          {COMMENT_FILTERS[filter]}
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 text-fg-faint" aria-hidden>
+            <path d="M6 8l4 4 4-4z" />
+          </svg>
+        </button>
+        {filterOpen && (
+          <div className="absolute left-4 top-full z-30 mt-1 w-40 rounded-lg border border-line-strong bg-elevated p-1.5 shadow-2xl shadow-black/60">
+            {(Object.keys(COMMENT_FILTERS) as CommentFilter[]).map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setFilter(key);
+                  setFilterOpen(false);
+                }}
+                className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-fg transition-colors hover:bg-hover hover:text-fg-strong"
+              >
+                {COMMENT_FILTERS[key]}
+                {filter === key && (
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-accent" aria-hidden>
+                    <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
         {comments.loading ? (
           <div className="flex items-center justify-center gap-2 pt-8 text-sm text-fg-soft">
             <svg className="h-4 w-4 animate-spin text-accent-hover" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -360,8 +418,12 @@ function CommentsTab({
           <p className="pt-8 text-center text-sm text-fg-faint">
             No comments yet. Add one at the current frame below.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="pt-8 text-center text-sm text-fg-faint">
+            No {filter === "open" ? "open" : "resolved"} comments.
+          </p>
         ) : (
-          comments.threads.map((thread) => (
+          visible.map((thread) => (
             <ThreadView
               key={thread.id}
               thread={thread}
@@ -376,20 +438,35 @@ function CommentsTab({
         )}
       </div>
 
-      {/* Composer pinned to the current playhead. */}
+      {/* Composer — a bordered card pinned to the playhead (or the in→out
+          range when one is set), matching the reference. */}
       <div className="border-t border-line-strong p-3">
-        <div className="flex items-end gap-2">
-          <span
-            className={cn(
-              "mb-1.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px]",
-              selection
-                ? "bg-accent/20 text-accent"
-                : "bg-elevated text-fg-soft",
+        <div className="rounded-xl border border-line bg-base p-2 focus-within:border-accent">
+          <div className="mb-2 flex items-center gap-2">
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 font-mono text-[11px]",
+                selection ? "bg-accent/15 text-accent" : "bg-elevated text-fg-soft",
+              )}
+            >
+              {formatRange(start, end)}
+            </span>
+            <span className="text-[11px] text-fg-faint">
+              {selection ? "range selected" : "at current frame"}
+            </span>
+            {selection && (
+              <button
+                type="button"
+                onClick={onClearSelection}
+                title="Clear range"
+                className="ml-auto rounded p-0.5 text-fg-faint hover:bg-hover hover:text-fg-strong"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                  <path d="M10 8.6 5.7 4.3 4.3 5.7 8.6 10l-4.3 4.3 1.4 1.4L10 11.4l4.3 4.3 1.4-1.4L11.4 10l4.3-4.3-1.4-1.4z" />
+                </svg>
+              </button>
             )}
-            title={selection ? "Comment range (in → out)" : "Comment at current frame"}
-          >
-            {formatRange(start, end)}
-          </span>
+          </div>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -399,24 +476,28 @@ function CommentsTab({
                 submit();
               }
             }}
-            rows={1}
+            rows={2}
             disabled={!comments.canComment}
             placeholder={
-              comments.canComment ? "Add a comment…" : "Comments are read-only here"
+              comments.canComment
+                ? `Add a comment at ${formatRange(start, end)}…`
+                : "Comments are read-only here"
             }
-            className="min-h-[34px] flex-1 resize-none rounded-md border border-line bg-base px-2.5 py-1.5 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent-hover focus:outline-none disabled:opacity-60"
+            className="w-full resize-none bg-transparent px-1 text-sm text-fg-strong placeholder:text-fg-faint focus:outline-none disabled:opacity-60"
           />
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!draft.trim() || !comments.canComment}
-            aria-label="Send comment"
-            className="mb-0.5 shrink-0 rounded-md bg-accent p-2 text-white hover:bg-accent-hover disabled:opacity-40"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path d="M2 10l15-7-7 15-2-6-6-2z" />
-            </svg>
-          </button>
+          <div className="mt-1 flex items-center gap-1">
+            <span className="rounded-md px-1.5 py-1 text-[11px] text-fg-faint">
+              ⏎ to send
+            </span>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!draft.trim() || !comments.canComment}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-40"
+            >
+              Comment
+            </button>
+          </div>
         </div>
       </div>
     </>
@@ -454,22 +535,58 @@ function ThreadView({
     <div
       onClick={onFocus}
       className={cn(
-        "rounded-lg px-2 py-3 transition-colors",
-        isActive && "bg-elevated/60",
+        "group rounded-lg px-2 py-3 transition-colors",
+        isActive
+          ? "bg-elevated/70 ring-1 ring-accent/30"
+          : "hover:bg-hover/40",
       )}
     >
-      <CommentRow
-        comment={thread}
-        onSeek={onSeek}
-        resolved={thread.resolved}
-        onToggleResolved={() => onToggleResolved(thread.id)}
-        onDelete={() => onDelete(thread.id)}
-      />
+      <CommentRow comment={thread} onSeek={onSeek} resolved={thread.resolved} />
+
+      {/* Action row — always visible, mirrors the reference card. */}
+      <div className="mt-2 flex items-center gap-3 pl-9 text-[11px] text-fg-soft">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setReplying(true);
+          }}
+          className="hover:text-fg-strong"
+        >
+          Reply
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleResolved(thread.id);
+          }}
+          className={cn(
+            "hover:text-fg-strong",
+            thread.resolved && "text-emerald-300",
+          )}
+        >
+          {thread.resolved ? "Unresolve" : "Resolve"}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(thread.id);
+          }}
+          className="ml-auto opacity-0 transition-opacity hover:text-rose-400 group-hover:opacity-100"
+        >
+          Delete
+        </button>
+      </div>
 
       {thread.replies.length > 0 && (
         <button
           type="button"
-          onClick={() => setShowReplies((s) => !s)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowReplies((s) => !s);
+          }}
           className="mt-2 flex items-center gap-1 pl-9 text-xs text-fg-soft hover:text-fg-strong"
         >
           {thread.replies.length} {thread.replies.length === 1 ? "Reply" : "Replies"}
@@ -491,7 +608,7 @@ function ThreadView({
           </div>
         ))}
 
-      {replying ? (
+      {replying && (
         <div className="mt-2 flex items-end gap-2 pl-9">
           <textarea
             autoFocus
@@ -517,14 +634,6 @@ function ThreadView({
             Reply
           </button>
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setReplying(true)}
-          className="mt-2 pl-9 text-xs text-fg-soft hover:text-fg-strong"
-        >
-          Reply
-        </button>
       )}
     </div>
   );
@@ -535,18 +644,15 @@ function CommentRow({
   onSeek,
   isReply,
   resolved,
-  onToggleResolved,
-  onDelete,
 }: {
   comment: Comment;
   onSeek: (t: number) => void;
   isReply?: boolean;
   resolved?: boolean;
-  onToggleResolved?: () => void;
-  onDelete?: () => void;
 }) {
+  const isRange = comment.tEnd !== undefined && comment.tEnd > comment.t;
   return (
-    <div className="group flex gap-2.5">
+    <div className="flex gap-2.5">
       <Avatar label={comment.author.name || comment.author.email} reply={isReply} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -556,61 +662,55 @@ function CommentRow({
           <span className="shrink-0 text-[11px] text-fg-faint">
             {formatRelative(comment.createdAt)}
           </span>
-          {onToggleResolved && (
-            <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleResolved();
-                }}
-                title={resolved ? "Mark unresolved" : "Mark resolved"}
-                className="rounded p-0.5 text-fg-soft hover:bg-base hover:text-emerald-400"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                  <path
-                    fillRule="evenodd"
-                    d="M16.7 5.3a1 1 0 010 1.4l-7 7a1 1 0 01-1.4 0l-3-3a1 1 0 011.4-1.4l2.3 2.29 6.3-6.29a1 1 0 011.4 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-              {onDelete && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                  title="Delete"
-                  className="rounded p-0.5 text-fg-soft hover:bg-base hover:text-rose-400"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-                    <path d="M6 7h8l-.7 9H6.7L6 7zM8 4h4l1 2H7l1-2z" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          )}
+          {/* Resolved badge takes precedence; otherwise a range comment shows
+              its in→out span here (top-right), matching the reference. */}
+          {!isReply && resolved ? (
+            <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
+              <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+              </svg>
+              Resolved
+            </span>
+          ) : !isReply && isRange ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSeek(comment.t);
+              }}
+              className="ml-auto shrink-0 rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[10px] text-accent hover:bg-accent/25"
+            >
+              {formatRange(comment.t, comment.tEnd)}
+            </button>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSeek(comment.t);
-          }}
-          className="mr-1.5 mt-0.5 inline-block rounded bg-elevated px-1.5 py-0.5 align-middle font-mono text-[11px] text-fg-soft hover:bg-base hover:text-accent"
-        >
-          {formatRange(comment.t, comment.tEnd)}
-        </button>
-        <span
-          className={cn(
-            "align-middle text-sm text-fg",
-            resolved && "text-fg-faint line-through",
+        <div className="mt-1">
+          {/* Point comments lead with an inline timecode chip; range comments
+              carry their span in the header chip above. */}
+          {!isReply && !isRange && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSeek(comment.t);
+              }}
+              className={cn(
+                "mr-1.5 inline-block rounded bg-elevated px-1.5 py-0.5 align-middle font-mono text-[11px] hover:bg-base hover:text-accent",
+                resolved ? "text-fg-soft" : "text-accent",
+              )}
+            >
+              {formatRange(comment.t, comment.tEnd)}
+            </button>
           )}
-        >
-          {comment.body}
-        </span>
+          <span
+            className={cn(
+              "align-middle text-sm text-fg",
+              resolved && "text-fg-faint line-through",
+            )}
+          >
+            {comment.body}
+          </span>
+        </div>
       </div>
     </div>
   );

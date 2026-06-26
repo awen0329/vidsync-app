@@ -117,6 +117,16 @@ export function VideoStage({
   const cycleRate = () =>
     setRate((r) => PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(r) + 1) % PLAYBACK_RATES.length] ?? 1);
 
+  // Nudge the playhead one frame at a time (assume 30fps — we don't carry the
+  // real frame rate). Pauses first so the stepped frame stays put, matching the
+  // step buttons in the reference player.
+  const FRAME = 1 / 30;
+  const stepFrame = (dir: -1 | 1) => {
+    const v = videoRef.current;
+    if (v && !v.paused) v.pause();
+    previewSeek(currentTime + dir * FRAME);
+  };
+
   // Seek the displayed video to a time without changing the range — used so
   // dragging or typing an in/out point shows that exact frame ("the scene at
   // that time"), like the reference UI.
@@ -432,37 +442,21 @@ export function VideoStage({
         )}
       </div>
 
-      {/* Custom control bar with a marker-bearing scrubber. */}
-      <div className="flex items-center gap-3 border-t border-line-strong bg-panel px-3 py-2">
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label={playing ? "Pause" : "Play"}
-          className="shrink-0 rounded p-1 text-fg-soft hover:bg-elevated hover:text-fg-strong"
-        >
-          {playing ? (
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path d="M6 4h3v12H6zM11 4h3v12h-3z" />
-            </svg>
-          ) : (
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path d="M6 4l10 6-10 6z" />
-            </svg>
-          )}
-        </button>
-
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-soft">
-          {formatClock(currentTime)}
-        </span>
-
+      {/* Custom control bar: a full-width scrubber row above a controls row,
+          matching the reference player. */}
+      <div className="border-t border-line-strong bg-panel px-4 pb-3 pt-2.5">
         {/* Scrubber track. Markers sit on top, anchored to their comment time. */}
-        <div ref={trackRef} className="relative flex-1 py-2" onClick={onTrackClick} role="presentation">
-          <div className="h-1 w-full rounded-full bg-line-strong">
-            <div
-              className="h-1 rounded-full bg-accent"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+        <div
+          ref={trackRef}
+          className="relative mb-2.5 h-6 cursor-pointer"
+          onClick={onTrackClick}
+          role="presentation"
+        >
+          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-elevated" />
+          <div
+            className="absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-full bg-accent"
+            style={{ width: `${pct}%` }}
+          />
           {/* Pending in→out selection: an emerald range whose bracket handles
               sit just OUTSIDE each point — the "[" left of the in-point, the
               "]" right of the out-point — so start and end never overlap, even
@@ -505,7 +499,7 @@ export function VideoStage({
                 </>
               );
             })()}
-          {/* Range comments render as a bar; point comments as a dot. */}
+          {/* Range comments render as a bar; point comments as a tick. */}
           {duration > 0 &&
             markers.map((c) =>
               c.tEnd !== undefined && c.tEnd > c.t ? (
@@ -539,7 +533,7 @@ export function VideoStage({
                     onMarkerClick(c);
                   }}
                   className={cn(
-                    "absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-base transition-transform hover:scale-125",
+                    "absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform hover:scale-125",
                     c.resolved ? "bg-emerald-400" : "bg-amber-400",
                     activeMarkerId === c.id && "scale-125 ring-2 ring-white/70",
                   )}
@@ -547,81 +541,136 @@ export function VideoStage({
                 />
               ),
             )}
-          {/* Playhead (drawn last so it sits above markers) */}
+          {/* Playhead: a thin white line with a square cap (drawn last so it
+              sits above markers). */}
           <div
-            className="pointer-events-none absolute top-1/2 z-10 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
+            className="pointer-events-none absolute inset-y-0 z-10 w-0.5 -translate-x-1/2 bg-white"
             style={{ left: `${pct}%` }}
-          />
+          >
+            <div className="absolute -top-0.5 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-sm bg-white shadow" />
+          </div>
         </div>
 
-        <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-faint">
-          {formatClock(duration)}
-        </span>
-
-        {/* Comment range: create/clear; drag the handles on the timeline to
-            adjust the in/out points. */}
-        <button
-          type="button"
-          onClick={toggleRange}
-          title={selection ? "Clear comment range" : "Add a comment range"}
-          aria-pressed={!!selection}
-          className={cn(
-            "shrink-0 rounded p-1 hover:bg-elevated hover:text-fg-strong",
-            selection ? "text-emerald-300" : "text-fg-soft",
-          )}
-        >
-          <svg className="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
-            <path d="M6 5v10M14 5v10M6 10h8" />
-          </svg>
-        </button>
-
-        {/* Playback speed (cycles through 0.5/1/1.5/2). */}
-        <button
-          type="button"
-          onClick={cycleRate}
-          title="Playback speed"
-          className="shrink-0 rounded px-1.5 py-1 font-mono text-[11px] tabular-nums text-fg-soft hover:bg-elevated hover:text-fg-strong"
-        >
-          {rate}x
-        </button>
-
-        {/* Horizontal flip (mirror) — video only. */}
-        {!isAudio && (
+        {/* Controls row. */}
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
-            onClick={() => setFlipped((f) => !f)}
-            title={flipped ? "Unflip" : "Flip horizontally"}
-            aria-pressed={flipped}
-            className={cn(
-              "shrink-0 rounded p-1 hover:bg-elevated hover:text-fg-strong",
-              flipped ? "text-accent" : "text-fg-soft",
-            )}
+            onClick={() => stepFrame(-1)}
+            title="Previous frame"
+            className="shrink-0 text-fg-soft hover:text-fg-strong"
           >
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M10 3v14" strokeDasharray="2 2" />
-              <path d="M8 6L4 10l4 4zM12 6l4 4-4 4" />
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path d="M5 4h2v12H5zM8 10l8-6v12z" />
             </svg>
           </button>
-        )}
+          <button
+            type="button"
+            onClick={togglePlay}
+            aria-label={playing ? "Pause" : "Play"}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-base shadow hover:bg-white/90"
+          >
+            {playing ? (
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path d="M6 4h3v12H6zM11 4h3v12h-3z" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                <path d="M6 4l10 6-10 6z" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => stepFrame(1)}
+            title="Next frame"
+            className="shrink-0 text-fg-soft hover:text-fg-strong"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path d="M13 4h2v12h-2zM4 4l8 6-8 6z" />
+            </svg>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setMuted((m) => !m)}
-          aria-label={muted ? "Unmute" : "Mute"}
-          className="shrink-0 rounded p-1 text-fg-soft hover:bg-elevated hover:text-fg-strong"
-        >
-          {muted ? (
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path d="M3 8v4h3l4 3V5L6 8H3z" />
-              <path d="M13 7l4 6M17 7l-4 6" stroke="currentColor" strokeWidth="1.4" fill="none" />
-            </svg>
-          ) : (
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
-              <path d="M3 8v4h3l4 3V5L6 8H3z" />
-              <path d="M13 7a4 4 0 010 6" stroke="currentColor" strokeWidth="1.4" fill="none" />
-            </svg>
+          <span className="ml-1 shrink-0 font-mono text-xs tabular-nums text-fg">
+            {formatClock(currentTime)}
+            <span className="text-fg-faint"> / {formatClock(duration)}</span>
+          </span>
+
+          {/* IN → OUT range chip (mirrors the reference; the editable
+              timecodes live in the range editor strip below). */}
+          {selection && (
+            <div className="ml-2 flex items-center gap-1.5 rounded-lg bg-elevated px-2 py-1 ring-1 ring-line">
+              <span className="font-mono text-[11px] text-accent">IN {formatClock(selection.in)}</span>
+              <span className="text-fg-faint">→</span>
+              <span className="font-mono text-[11px] text-accent">OUT {formatClock(selection.out)}</span>
+            </div>
           )}
-        </button>
+
+          <div className="ml-auto flex items-center gap-1 text-fg-soft">
+            {/* Playback speed (cycles through 0.5/1/1.5/2). */}
+            <button
+              type="button"
+              onClick={cycleRate}
+              title="Playback speed"
+              className="rounded-md px-2 py-1 font-mono text-[11px] tabular-nums hover:bg-hover hover:text-fg-strong"
+            >
+              {rate}×
+            </button>
+
+            {/* Comment range: create/clear; drag the timeline handles to adjust. */}
+            <button
+              type="button"
+              onClick={toggleRange}
+              title={selection ? "Clear comment range" : "Add a comment range"}
+              aria-pressed={!!selection}
+              className={cn(
+                "rounded-md p-1.5 hover:bg-hover hover:text-fg-strong",
+                selection ? "text-emerald-300" : "",
+              )}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+                <path d="M6 5v10M14 5v10M6 10h8" />
+              </svg>
+            </button>
+
+            {/* Horizontal flip (mirror) — video only. */}
+            {!isAudio && (
+              <button
+                type="button"
+                onClick={() => setFlipped((f) => !f)}
+                title={flipped ? "Unflip" : "Flip horizontally"}
+                aria-pressed={flipped}
+                className={cn(
+                  "rounded-md p-1.5 hover:bg-hover hover:text-fg-strong",
+                  flipped ? "text-accent" : "",
+                )}
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M10 3v14" strokeDasharray="2 2" />
+                  <path d="M8 6L4 10l4 4zM12 6l4 4-4 4" />
+                </svg>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setMuted((m) => !m)}
+              aria-label={muted ? "Unmute" : "Mute"}
+              className="rounded-md p-1.5 hover:bg-hover hover:text-fg-strong"
+            >
+              {muted ? (
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                  <path d="M3 8v4h3l4 3V5L6 8H3z" />
+                  <path d="M13 7l4 6M17 7l-4 6" stroke="currentColor" strokeWidth="1.4" fill="none" />
+                </svg>
+              ) : (
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                  <path d="M3 8v4h3l4 3V5L6 8H3z" />
+                  <path d="M13 7a4 4 0 010 6" stroke="currentColor" strokeWidth="1.4" fill="none" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Range editor — appears when a comment range is active. Drag the
