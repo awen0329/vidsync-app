@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#0c0f15;color:#d7dde7;-webkit-font-smoothing:antialiased;padding:28px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;max-width:1340px}
+  .card{background:#131820;border:1px solid #222936;border-radius:14px;padding:20px 22px}
+  .tag{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#4f7cff;margin-bottom:14px}
+  .h{font-size:22px;font-weight:600;color:#f6f8fc;letter-spacing:-.01em}
+  .path{font-size:13px;color:#8b94a6;margin-top:2px}
+  .row{display:flex;align-items:center;gap:10px;margin-top:16px}
+  .thumb{width:54px;height:32px;border-radius:6px;background:linear-gradient(135deg,#1a2740,#06101f);flex:none}
+  .fn{font-size:13px;font-weight:500;color:#f6f8fc}
+  .meta{font-size:11px;color:#5b6577;margin-top:2px}
+  .pill{margin-left:auto;font-size:10px;font-weight:500;color:#9be7c4;background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);border-radius:999px;padding:2px 8px}
+  .btnrow{margin-top:18px;display:flex;gap:8px;align-items:center}
+  .btn{font-size:12px;font-weight:600;color:#fff;background:#4f7cff;border-radius:8px;padding:7px 14px}
+  .num{font-size:12px;color:#8b94a6;font-variant-numeric:tabular-nums}
+  .name{position:absolute;top:14px;right:18px;font-size:12px;color:#5b6577;font-family:'JetBrains Mono',monospace}
+  .card{position:relative}
+  .inter{font-family:'Inter',sans-serif}
+  .manrope{font-family:'Manrope',sans-serif}
+  .plex{font-family:'IBM Plex Sans',sans-serif}
+  .jakarta{font-family:'Plus Jakarta Sans',sans-serif}
+  .segoe{font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<div class="grid">
+  <!-- card template repeated per font -->
+  <div class="card inter"><span class="name">1 · Inter</span>
+    <span class="tag">Owned · 1.2 TB</span>
+    <div class="h">Oryp — S2</div><div class="path">Key scenes / Hero shots</div>
+    <div class="row"><div class="thumb"></div><div><div class="fn">SC04_HERO_silhouette_v3.mov</div><div class="meta">412 MB · 2h ago · 1920×1080</div></div><span class="pill">● Synced</span></div>
+    <div class="btnrow"><span class="btn">Share</span><span class="num">3 folders · 128 files · 02:14</span></div>
+  </div>
+
+  <div class="card manrope"><span class="name">2 · Manrope</span>
+    <span class="tag">Owned · 1.2 TB</span>
+    <div class="h">Oryp — S2</div><div class="path">Key scenes / Hero shots</div>
+    <div class="row"><div class="thumb"></div><div><div class="fn">SC04_HERO_silhouette_v3.mov</div><div class="meta">412 MB · 2h ago · 1920×1080</div></div><span class="pill">● Synced</span></div>
+    <div class="btnrow"><span class="btn">Share</span><span class="num">3 folders · 128 files · 02:14</span></div>
+  </div>
+
+  <div class="card plex"><span class="name">3 · IBM Plex Sans</span>
+    <span class="tag">Owned · 1.2 TB</span>
+    <div class="h">Oryp — S2</div><div class="path">Key scenes / Hero shots</div>
+    <div class="row"><div class="thumb"></div><div><div class="fn">SC04_HERO_silhouette_v3.mov</div><div class="meta">412 MB · 2h ago · 1920×1080</div></div><span class="pill">● Synced</span></div>
+    <div class="btnrow"><span class="btn">Share</span><span class="num">3 folders · 128 files · 02:14</span></div>
+  </div>
+
+  <div class="card jakarta"><span class="name">4 · Plus Jakarta Sans</span>
+    <span class="tag">Owned · 1.2 TB</span>
+    <div class="h">Oryp — S2</div><div class="path">Key scenes / Hero shots</div>
+    <div class="row"><div class="thumb"></div><div><div class="fn">SC04_HERO_silhouette_v3.mov</div><div class="meta">412 MB · 2h ago · 1920×1080</div></div><span class="pill">● Synced</span></div>
+    <div class="btnrow"><span class="btn">Share</span><span class="num">3 folders · 128 files · 02:14</span></div>
+  </div>
+
+  <div class="card segoe"><span class="name">5 · Segoe UI (current)</span>
+    <span class="tag">Owned · 1.2 TB</span>
+    <div class="h">Oryp — S2</div><div class="path">Key scenes / Hero shots</div>
+    <div class="row"><div class="thumb"></div><div><div class="fn">SC04_HERO_silhouette_v3.mov</div><div class="meta">412 MB · 2h ago · 1920×1080</div></div><span class="pill">● Synced</span></div>
+    <div class="btnrow"><span class="btn">Share</span><span class="num">3 folders · 128 files · 02:14</span></div>
+  </div>
+</div>
+</body>
+</html>

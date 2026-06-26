@@ -36,7 +36,7 @@ export function NavRail({
   transferCount: number;
 }) {
   return (
-    <nav className="flex w-[64px] shrink-0 flex-col items-center border-r border-line bg-rail py-4">
+    <nav className="flex w-[60px] shrink-0 flex-col items-center rounded-xl border border-line bg-rail py-4">
       <button
         type="button"
         onClick={() => onSection("projects")}

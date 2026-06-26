@@ -16,6 +16,18 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        // App font (also set on <body> in index.css); `font-mono` uses
+        // IBM Plex Mono for timecodes / paths to match the condensed sans.
+        sans: [
+          "IBM Plex Sans Condensed",
+          "Segoe UI Variable",
+          "Segoe UI",
+          "system-ui",
+          "sans-serif",
+        ],
+        mono: ["IBM Plex Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+      },
       colors: {
         // Surfaces ordered from outermost to most elevated. `rail` sits
         // *below* base — the slim navigation rail reads as window chrome.

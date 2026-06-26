@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vidsync</title>
+    <!-- App UI font. IBM Plex Sans Condensed packs more into the dense
+         media-tool layout. Loaded from Google Fonts (online); vendor the
+         woff2 locally before shipping an offline-capable release. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <style>
       /* Paint the dark app background before Tailwind loads so a cold
          launch never flashes white. We need this here (not just in

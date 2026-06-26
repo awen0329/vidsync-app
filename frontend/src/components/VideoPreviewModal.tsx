@@ -57,10 +57,20 @@ export function VideoPreviewModal({
       onClick={onClose}
     >
       <div
-        className="relative flex h-[88vh] w-full max-w-7xl"
+        className="relative flex h-[88vh] w-full max-w-7xl overflow-hidden rounded-xl border border-line bg-panel"
         onClick={(e) => e.stopPropagation()}
       >
-        <VideoReviewPanel file={file} onClose={onClose} />
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close preview"
+          className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-base/70 text-fg-soft backdrop-blur-sm transition-colors hover:bg-hover hover:text-fg-strong"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
+            <path d="M10 8.6 5.7 4.3 4.3 5.7 8.6 10l-4.3 4.3 1.4 1.4L10 11.4l4.3 4.3 1.4-1.4L11.4 10l4.3-4.3-1.4-1.4z" />
+          </svg>
+        </button>
+        <VideoReviewPanel file={file} />
       </div>
     </div>
   );

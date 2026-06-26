@@ -23,10 +23,18 @@ import { useFolderCollageThumbs } from "../lib/useFolderThumbs";
 import { cn } from "../lib/utils";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { FileDetailsModal, type FileDetails } from "./FileDetailsModal";
-import { LazyVideoReviewPanel } from "./LazyVideoReviewPanel";
 import { UnreadBadge } from "./UnreadBadge";
+import { PresenceAvatar, type PresenceState } from "./PresenceAvatar";
 import { useUnread } from "../api/cloud/useUnread";
 import type { VideoPreviewFile } from "./VideoPreviewModal";
+
+// A collaborator rendered in the toolbar's member stack. Built by the
+// project view (it owns device labels + presence) and passed down.
+export interface ProjectMemberSummary {
+  id: string;
+  label: string;
+  state: PresenceState;
+}
 
 // FileGrid: the file browser inside ProjectDetail's "Files" tab.
 // Iconik / Frame.io shape — big thumbnails, status chip overlay, dense
@@ -84,11 +92,18 @@ const SORT_LABELS: { value: SortKey; label: string }[] = [
 // localStorage so the chosen density/aspect sticks across sessions.
 type CardSize = "S" | "M" | "L";
 type CardAspect = "video" | "square";
+type CardScale = "fill" | "fit";
 
 interface Appearance {
   size: CardSize;
   aspect: CardAspect;
+  // How the thumbnail fills its frame: "fill" crops to cover, "fit" letterboxes.
+  scale: CardScale;
+  // Titles = the filename; Card Info = the size·date meta line.
   showNames: boolean;
+  showInfo: boolean;
+  // Flatten = list every file recursively, hiding folders.
+  flatten: boolean;
   hoverToPlay: boolean;
 }
 
@@ -96,7 +111,10 @@ const APPEARANCE_KEY = "vidsync.gridAppearance";
 const DEFAULT_APPEARANCE: Appearance = {
   size: "M",
   aspect: "video",
+  scale: "fill",
   showNames: true,
+  showInfo: true,
+  flatten: false,
   hoverToPlay: true,
 };
 
@@ -221,8 +239,10 @@ export function FileGrid({
   onNavigate,
   preview: controlledPreview,
   onPreview,
-  filesPanelVisible,
-  onToggleFilesPanel,
+  compact = false,
+  members = [],
+  memberCount = 1,
+  onOpenTeam,
 }: {
   folderID: string;
   folderPath?: string;
@@ -242,10 +262,13 @@ export function FileGrid({
   // omitted, the grid manages it internally. `null` = no video open.
   preview?: VideoPreviewFile | null;
   onPreview?: (file: VideoPreviewFile | null) => void;
-  // Files-panel (in-project FileTree) visibility + toggle, forwarded to
-  // the review player so its "Files" layout button can collapse it.
-  filesPanelVisible?: boolean;
-  onToggleFilesPanel?: () => void;
+  // Dense layout for when the grid is squeezed next to the player dock.
+  compact?: boolean;
+  // Collaborators shown in the toolbar's member stack, plus the total
+  // (incl. you) and a handler to open the project's Team view.
+  members?: ProjectMemberSummary[];
+  memberCount?: number;
+  onOpenTeam?: () => void;
 }) {
   // Global (not local) browse: we want the COMPLETE file list — every
   // file the cluster knows about — so each row can show its own status
@@ -312,6 +335,16 @@ export function FileGrid({
     setAppearance((a) => {
       const next = { ...a, ...patch };
       saveAppearance(next);
+      return next;
+    });
+  // Multi-select: a set of selected file paths (files only, never
+  // folders). Drives the per-card checkbox + accent highlight border.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const toggleSelect = (path: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   // Empty string = project root. Anything below is a "/"-joined POSIX
@@ -413,6 +446,33 @@ export function FileGrid({
       }
       return flat
         .filter((f) => f.path.toLowerCase().includes(q))
+        .filter((f) => !recentlyDeleted.has(f.path))
+        .map<FileEntry>((f) => ({
+          kind: "file",
+          ...f,
+          state: deriveState(f.path, needSets, transfers),
+        }))
+        .sort((a, b) => compareEntries(a, b, sort));
+    }
+
+    // Flatten Folders (Appearance): list every file under the current path
+    // recursively, hiding folders — same flat-file shape as search.
+    if (appearance.flatten) {
+      const subtree = Array.isArray(browse.data)
+        ? nodeAt(browse.data, currentPath)
+        : null;
+      const flat = subtree ? flattenFiles(subtree, currentPath) : [];
+      const prefix = currentPath ? currentPath + "/" : "";
+      const seen = new Set(flat.map((f) => f.path));
+      for (const n of needList) {
+        if (!n.path.startsWith(prefix)) continue;
+        if (seen.has(n.path)) continue;
+        const leaf = n.path.split("/").pop() ?? n.path;
+        if (isJunkFile(leaf)) continue;
+        seen.add(n.path);
+        flat.push({ path: n.path, name: leaf, size: n.size, modified: n.modified });
+      }
+      return flat
         .filter((f) => !recentlyDeleted.has(f.path))
         .map<FileEntry>((f) => ({
           kind: "file",
@@ -551,7 +611,7 @@ export function FileGrid({
       }
     }
     return out.sort((a, b) => compareEntries(a, b, sort));
-  }, [browse.data, need.data, currentPath, filter, needSets, transferPaths, transfers, recentlyDeleted, sort, pullsFiles]);
+  }, [browse.data, need.data, currentPath, filter, needSets, transferPaths, transfers, recentlyDeleted, sort, pullsFiles, appearance.flatten]);
 
   if (browse.isLoading && !Array.isArray(browse.data)) {
     return <p className="text-sm text-fg-soft">Loading files…</p>;
@@ -629,20 +689,8 @@ export function FileGrid({
   const fileCount = entries.length - folderCount;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {preview ? (
-        // Inline review player — opens in place of the grid (not a modal),
-        // with its own Back button to return to the file list.
-        <LazyVideoReviewPanel
-          file={preview}
-          onClose={() => setPreview(null)}
-          filesPanelVisible={filesPanelVisible}
-          onToggleFilesPanel={onToggleFilesPanel}
-        />
-      ) : (
-        <>
-      {/* pt-3 nudges the search row down from the tab strip so the
-          two pieces of chrome don't visually collide. */}
+    <div className="flex h-full min-h-0 flex-col px-3 pb-3">
+      {/* pt-3 keeps the search row off the dock's top edge. */}
       <div className="shrink-0 space-y-3 pt-3">
         <Toolbar
           filter={filter}
@@ -655,6 +703,9 @@ export function FileGrid({
           onAppearance={updateAppearance}
           folderCount={folderCount}
           fileCount={fileCount}
+          members={members}
+          memberCount={memberCount}
+          onOpenTeam={onOpenTeam}
         />
         {!filter && (
           <Breadcrumb path={currentPath} onNavigate={setCurrentPath} />
@@ -670,13 +721,20 @@ export function FileGrid({
             </p>
           </div>
         ) : view === "grid" ? (
-          <div className={cn("grid gap-4", GRID_COLS[appearance.size])}>
+          <div
+            className={cn(
+              "grid gap-2.5",
+              // When squeezed beside the player, force a dense 2-col grid
+              // (Tailwind's responsive cols are viewport- not container-based,
+              // so they can't react to the narrowed panel on their own).
+              compact ? "grid-cols-2" : GRID_COLS[appearance.size],
+            )}
+          >
             {entries.map((e) =>
               e.kind === "folder" ? (
                 <FolderTile
                   key={e.path}
                   entry={e}
-                  folderID={folderID}
                   unread={unread.isFolderUnread(e.path)}
                   appearance={appearance}
                   onOpen={() => setCurrentPath(e.path)}
@@ -688,6 +746,9 @@ export function FileGrid({
                   folderID={folderID}
                   unread={unread.isVideoUnread(e.path)}
                   appearance={appearance}
+                  selected={selected.has(e.path)}
+                  active={preview?.path === e.path}
+                  onToggleSelect={() => toggleSelect(e.path)}
                   onContextMenu={(x, y) => setMenu({ x, y, file: e })}
                   onPreview={() => openPreview(e)}
                 />
@@ -719,8 +780,6 @@ export function FileGrid({
           </ul>
         )}
       </div>
-        </>
-      )}
       {menu && (
         <ContextMenu
           x={menu.x}
@@ -749,6 +808,9 @@ function Toolbar({
   onAppearance,
   folderCount,
   fileCount,
+  members,
+  memberCount,
+  onOpenTeam,
 }: {
   filter: string;
   onFilter: (v: string) => void;
@@ -760,6 +822,9 @@ function Toolbar({
   onAppearance: (patch: Partial<Appearance>) => void;
   folderCount: number;
   fileCount: number;
+  members: ProjectMemberSummary[];
+  memberCount: number;
+  onOpenTeam?: () => void;
 }) {
   // Compact summary: "3 folders · 12 files", dropping zero terms.
   const parts: string[] = [];
@@ -771,16 +836,7 @@ function Toolbar({
   }
   return (
     <div className="flex items-center gap-3">
-      <div className="relative flex-1">
-        <SearchGlyph />
-        <input
-          value={filter}
-          onChange={(e) => onFilter(e.target.value)}
-          placeholder="Search files…"
-          className="w-full rounded-lg border border-line bg-panel py-2 pl-9 pr-3 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-        />
-      </div>
-      <span className="shrink-0 text-xs text-fg-faint">{parts.join(" · ")}</span>
+      {/* Left: display controls — Appearance (grid only), Sort, View. */}
       {view === "grid" && (
         <AppearanceMenu appearance={appearance} onAppearance={onAppearance} />
       )}
@@ -813,7 +869,72 @@ function Toolbar({
           icon={<ListIcon />}
         />
       </div>
+      <span className="shrink-0 text-xs text-fg-faint">{parts.join(" · ")}</span>
+
+      {/* Right: team avatars + search. */}
+      <div className="ml-auto flex items-center gap-3">
+        <MemberStack
+          members={members}
+          memberCount={memberCount}
+          onOpenTeam={onOpenTeam}
+        />
+        <div className="relative w-56 shrink-0 lg:w-64">
+          <SearchGlyph />
+          <input
+            value={filter}
+            onChange={(e) => onFilter(e.target.value)}
+            placeholder="Search files…"
+            className="w-full rounded-lg border border-line bg-panel py-2 pl-9 pr-3 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+      </div>
     </div>
+  );
+}
+
+// MemberStack: overlapping collaborator avatars + a count, shown beside
+// the search box. Clicking opens the project's Team view. Mirrors the
+// Frame.io member cluster; the count includes you.
+function MemberStack({
+  members,
+  memberCount,
+  onOpenTeam,
+}: {
+  members: ProjectMemberSummary[];
+  memberCount: number;
+  onOpenTeam?: () => void;
+}) {
+  const shown = members.slice(0, 3);
+  const overflow = members.length - shown.length;
+  return (
+    <button
+      type="button"
+      onClick={onOpenTeam}
+      title="Team"
+      aria-label={`Team — ${memberCount} member${memberCount === 1 ? "" : "s"}`}
+      className="flex shrink-0 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-hover"
+    >
+      <div className="flex -space-x-2">
+        {shown.map((m) => (
+          <span key={m.id} className="rounded-full ring-2 ring-base" title={m.label}>
+            <PresenceAvatar label={m.label} state={m.state} />
+          </span>
+        ))}
+        {overflow > 0 && (
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-elevated text-[10px] font-semibold text-fg-soft ring-2 ring-base">
+            +{overflow}
+          </span>
+        )}
+        {shown.length === 0 && (
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-elevated text-fg-soft ring-2 ring-base">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
+              <path d="M10 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 17a6 6 0 0 1 12 0H4z" />
+            </svg>
+          </span>
+        )}
+      </div>
+      <span className="text-xs font-medium tabular-nums text-fg-soft">{memberCount}</span>
+    </button>
   );
 }
 
@@ -858,19 +979,29 @@ function AppearanceMenu({
             : "text-fg ring-line hover:ring-line-strong",
         )}
       >
-        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 text-fg-soft" aria-hidden>
-          <path d="M3 6h14M3 10h9M3 14h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-4 w-4 text-fg-soft" aria-hidden>
+          <line x1="21" y1="5" x2="14" y2="5" /><line x1="10" y1="5" x2="3" y2="5" />
+          <line x1="21" y1="12" x2="12" y2="12" /><line x1="8" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="19" x2="16" y2="19" /><line x1="12" y1="19" x2="3" y2="19" />
+          <line x1="14" y1="3" x2="14" y2="7" /><line x1="8" y1="10" x2="8" y2="14" /><line x1="16" y1="17" x2="16" y2="21" />
         </svg>
         <span className="hidden sm:inline">Appearance</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-2 w-64 rounded-xl border border-line-strong bg-elevated p-4 shadow-2xl shadow-black/60">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-fg-faint">
-            Appearance
+        <div className="absolute left-0 top-full z-30 mt-2 w-72 rounded-xl border border-line-strong bg-elevated p-4 shadow-2xl shadow-black/60">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold text-fg-strong">Appearance</span>
+              <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5 text-fg-faint" aria-hidden>
+                <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M10 9v4M10 6.5h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </div>
+            <span className="text-[10px] text-fg-faint">Visible to only you</span>
           </div>
-          <div className="space-y-3.5 text-sm">
+          <div className="space-y-3 text-sm">
             <Segmented
-              label="Card size"
+              label="Card Size"
               value={appearance.size}
               options={[
                 { value: "S", label: "S" },
@@ -880,7 +1011,7 @@ function AppearanceMenu({
               onChange={(size) => onAppearance({ size: size as CardSize })}
             />
             <Segmented
-              label="Aspect ratio"
+              label="Aspect Ratio"
               value={appearance.aspect}
               options={[
                 { value: "video", label: "16:9" },
@@ -888,15 +1019,30 @@ function AppearanceMenu({
               ]}
               onChange={(aspect) => onAppearance({ aspect: aspect as CardAspect })}
             />
+            <Segmented
+              label="Thumbnail Scale"
+              value={appearance.scale}
+              options={[
+                { value: "fill", label: "Fill" },
+                { value: "fit", label: "Fit" },
+              ]}
+              onChange={(scale) => onAppearance({ scale: scale as CardScale })}
+            />
+            <div className="my-1 h-px bg-line" />
             <Toggle
-              label="Show file names"
+              label="Show Card Info"
+              checked={appearance.showInfo}
+              onChange={(v) => onAppearance({ showInfo: v })}
+            />
+            <Toggle
+              label="Titles"
               checked={appearance.showNames}
               onChange={(v) => onAppearance({ showNames: v })}
             />
             <Toggle
-              label="Hover to play"
-              checked={appearance.hoverToPlay}
-              onChange={(v) => onAppearance({ hoverToPlay: v })}
+              label="Flatten Folders"
+              checked={appearance.flatten}
+              onChange={(v) => onAppearance({ flatten: v })}
             />
           </div>
         </div>
@@ -1058,6 +1204,9 @@ function FileTile({
   folderID,
   unread,
   appearance,
+  selected = false,
+  active = false,
+  onToggleSelect,
   onContextMenu,
   onPreview,
 }: {
@@ -1065,6 +1214,11 @@ function FileTile({
   folderID: string;
   unread?: boolean;
   appearance: Appearance;
+  // selected = ticked via its checkbox (multi-select); active = currently
+  // open in the review player. Both draw an accent highlight border.
+  selected?: boolean;
+  active?: boolean;
+  onToggleSelect?: () => void;
   onContextMenu: (x: number, y: number) => void;
   onPreview: () => void;
 }) {
@@ -1104,7 +1258,10 @@ function FileTile({
   return (
     <div
       className={cn(
-        "group select-none overflow-hidden rounded-xl border border-line bg-elevated shadow-sm transition-all hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lg",
+        "group relative select-none overflow-hidden rounded-xl border bg-elevated shadow-sm transition-colors hover:shadow-lg",
+        selected || active
+          ? "border-accent ring-1 ring-accent"
+          : "border-line hover:border-line-strong",
         openable ? "cursor-pointer" : "cursor-default",
       )}
       title={`${file.path}\n${humanBytes(file.size)}`}
@@ -1118,13 +1275,41 @@ function FileTile({
         onContextMenu(e.clientX, e.clientY);
       }}
     >
+      {/* Multi-select checkbox — top-left, appears on hover or when ticked.
+          stopPropagation so ticking doesn't also open the player. */}
+      {onToggleSelect && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
+          aria-label={selected ? "Deselect" : "Select"}
+          aria-pressed={selected}
+          className={cn(
+            "absolute left-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded-[5px] border transition-all",
+            selected
+              ? "border-accent bg-accent text-white opacity-100"
+              : "border-white/60 bg-black/40 text-transparent opacity-0 backdrop-blur-sm group-hover:opacity-100",
+          )}
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden>
+            <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+          </svg>
+        </button>
+      )}
       <div
         className={cn(
           "relative w-full overflow-hidden bg-black",
           appearance.aspect === "square" ? "aspect-square" : "aspect-video",
         )}
       >
-        <TileThumbnail file={file} folderID={folderID} enabled={thumbable} />
+        <TileThumbnail
+          file={file}
+          folderID={folderID}
+          enabled={thumbable}
+          scale={appearance.scale}
+        />
         {hoverPlay && (
           <HoverPreviewVideo
             folderID={folderID}
@@ -1138,7 +1323,7 @@ function FileTile({
           <StateChip state={file.state} />
         </div>
         {unread && (
-          <div className="absolute left-1.5 top-1.5 rounded bg-base/70 p-0.5 ring-1 ring-red-500/40">
+          <div className="absolute bottom-1.5 left-1.5 rounded bg-base/70 p-0.5 ring-1 ring-red-500/40">
             <UnreadBadge />
           </div>
         )}
@@ -1153,25 +1338,29 @@ function FileTile({
           </div>
         )}
       </div>
-      {appearance.showNames && (
+      {(appearance.showNames || appearance.showInfo) && (
         <div className="px-2.5 py-2">
-          <div
-            className="truncate text-xs font-medium text-fg-strong"
-            title={file.path}
-          >
-            {file.name}
-          </div>
-          <div className="mt-0.5 truncate text-[10px] text-fg-faint">
-            {humanBytes(file.size)} · {humanRelative(file.modified)}
-            {file.state.kind === "syncing" && file.state.ratePerSec > 0 && (
-              <>
-                {" · "}
-                <span className="text-amber-300">
-                  {humanRate(file.state.ratePerSec)}
-                </span>
-              </>
-            )}
-          </div>
+          {appearance.showNames && (
+            <div
+              className="truncate text-xs font-medium text-fg-strong"
+              title={file.path}
+            >
+              {file.name}
+            </div>
+          )}
+          {appearance.showInfo && (
+            <div className="mt-0.5 truncate text-[10px] text-fg-faint">
+              {humanBytes(file.size)} · {humanRelative(file.modified)}
+              {file.state.kind === "syncing" && file.state.ratePerSec > 0 && (
+                <>
+                  {" · "}
+                  <span className="text-amber-300">
+                    {humanRate(file.state.ratePerSec)}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1182,37 +1371,34 @@ function FileTile({
 
 function FolderTile({
   entry,
-  folderID,
   unread,
   appearance,
   onOpen,
 }: {
   entry: FolderEntry;
-  folderID: string;
   unread?: boolean;
   appearance: Appearance;
   onOpen: () => void;
 }) {
-  // Up to 4 daemon thumbnails of video/image files inside this subfolder
-  // (audio excluded). Falls back to a gradient + folder glyph when the
-  // folder has no previewable media.
-  const thumbs = useFolderCollageThumbs(folderID, 4, entry.path);
   const subtitle = folderSubtitle(entry.aggregate, entry.childCount);
   return (
     <button
       type="button"
       onClick={onOpen}
       title={entry.path}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-elevated text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-accent"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-elevated text-left shadow-sm transition-colors hover:border-line-strong hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-accent"
     >
       <div
         className={cn(
           "relative w-full overflow-hidden",
           appearance.aspect === "square" ? "aspect-square" : "aspect-video",
         )}
+        style={{ backgroundImage: folderGradient(entry.path) }}
       >
-        <FolderCollage thumbs={thumbs} />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <FolderIcon className="h-10 w-10 text-white/35" />
+        </div>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
         <div className="absolute left-1.5 top-1.5 flex h-5 items-center gap-1 rounded bg-black/40 px-1.5 text-[10px] font-medium text-white ring-1 ring-white/10 backdrop-blur-sm">
           <FolderIcon className="h-3 w-3" />
           <span>{entry.aggregate.totalFiles.toLocaleString()}</span>
@@ -1226,16 +1412,40 @@ function FolderTile({
           <FolderStateChip aggregate={entry.aggregate} />
         </div>
       </div>
-      {appearance.showNames && (
+      {(appearance.showNames || appearance.showInfo) && (
         <div className="px-2.5 py-2">
-          <div className="truncate text-xs font-medium text-fg-strong">
-            {entry.name}
-          </div>
-          <div className="mt-0.5 truncate text-[10px] text-fg-faint">{subtitle}</div>
+          {appearance.showNames && (
+            <div className="truncate text-xs font-medium text-fg-strong">
+              {entry.name}
+            </div>
+          )}
+          {appearance.showInfo && (
+            <div className="mt-0.5 truncate text-[10px] text-fg-faint">{subtitle}</div>
+          )}
         </div>
       )}
     </button>
   );
+}
+
+// folderGradient returns a deterministic cinematic gradient for a folder
+// tile — replaces the old 4-thumbnail collage with a clean colored swatch
+// (matching the redesign mockups). Picked by a stable hash of the path.
+const FOLDER_GRADIENTS = [
+  "linear-gradient(135deg,#1a2740 0%,#0e1830 45%,#06101f 100%)",
+  "radial-gradient(120% 120% at 30% 10%,#3a2a1c 0%,#1c130b 55%,#0b0805 100%)",
+  "linear-gradient(160deg,#2a1530 0%,#160a22 50%,#08040f 100%)",
+  "radial-gradient(120% 100% at 70% 20%,#103030 0%,#0a1d22 55%,#051014 100%)",
+  "linear-gradient(135deg,#2b2030 0%,#161023 60%,#0a0814 100%)",
+  "radial-gradient(120% 120% at 40% 30%,#26303f 0%,#121821 60%,#080b11 100%)",
+  "linear-gradient(150deg,#3b2418 0%,#1f130b 55%,#0b0704 100%)",
+  "linear-gradient(135deg,#152a3a 0%,#0c1a28 55%,#06101a 100%)",
+];
+
+function folderGradient(path: string): string {
+  let h = 0;
+  for (let i = 0; i < path.length; i++) h = (h * 31 + path.charCodeAt(i)) >>> 0;
+  return FOLDER_GRADIENTS[h % FOLDER_GRADIENTS.length];
 }
 
 function FolderRow({
@@ -1332,64 +1542,6 @@ function FolderStateChip({ aggregate }: { aggregate: FolderAggregateInfo }) {
     return <Chip tone="muted" dotPulse={false} label={`${aggregate.pendingFiles} queued`} />;
   }
   return <Chip tone="success" dotPulse={false} label="Synced" />;
-}
-
-// FolderCollage: 1/2/3/4-thumb layout matching ProjectCover's style.
-// Thumbnails come from the daemon; any the daemon can't produce (204 → <img>
-// error) are dropped so the layout only shows ones that actually render. When
-// none render (no previewable media, e.g. an audio-only folder), a subtle
-// gradient + folder glyph stands in.
-function FolderCollage({ thumbs }: { thumbs: string[] }) {
-  const [broken, setBroken] = useState<Set<string>>(new Set());
-  // Reset when the thumb set changes (folder navigation / new content).
-  useEffect(() => setBroken(new Set()), [thumbs]);
-  const onErr = (u: string) =>
-    setBroken((b) => (b.has(u) ? b : new Set(b).add(u)));
-  const good = thumbs.filter((u) => !broken.has(u));
-
-  const cell = (u: string, className: string) => (
-    <img
-      key={u}
-      src={u}
-      alt=""
-      aria-hidden
-      draggable={false}
-      className={className}
-      onError={() => onErr(u)}
-    />
-  );
-
-  if (good.length === 0) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-900/40 via-violet-900/30 to-slate-900">
-        <FolderIcon className="h-12 w-12 text-fg-strong/40" />
-      </div>
-    );
-  }
-  if (good.length === 1) {
-    return cell(good[0], "absolute inset-0 h-full w-full object-cover");
-  }
-  if (good.length === 2) {
-    return (
-      <div className="absolute inset-0 grid grid-cols-2 gap-px">
-        {good.map((u) => cell(u, "h-full w-full object-cover"))}
-      </div>
-    );
-  }
-  if (good.length === 3) {
-    return (
-      <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px">
-        {cell(good[0], "row-span-2 h-full w-full object-cover")}
-        {cell(good[1], "h-full w-full object-cover")}
-        {cell(good[2], "h-full w-full object-cover")}
-      </div>
-    );
-  }
-  return (
-    <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-px">
-      {good.slice(0, 4).map((u) => cell(u, "h-full w-full object-cover"))}
-    </div>
-  );
 }
 
 function FolderIcon({ className }: { className?: string }) {
@@ -1505,10 +1657,12 @@ function TileThumbnail({
   file,
   folderID,
   enabled,
+  scale = "fill",
 }: {
   file: FileEntry;
   folderID: string;
   enabled: boolean;
+  scale?: CardScale;
 }) {
   // The daemon generates the poster/waveform with ffmpeg and caches it,
   // so we just point an <img> at /rest/folder/thumb. This works for every
@@ -1533,7 +1687,10 @@ function TileThumbnail({
       <img
         src={src}
         alt=""
-        className="h-full w-full object-cover"
+        className={cn(
+          "h-full w-full",
+          scale === "fit" ? "object-contain" : "object-cover",
+        )}
         loading="lazy"
         decoding="async"
         draggable={false}

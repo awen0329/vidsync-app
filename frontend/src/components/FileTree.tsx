@@ -239,6 +239,7 @@ function TreeLevel({
             depth={depth}
             label={node.name}
             isDir={false}
+            fileKind={mediaKind(node.name)}
             hasChildren={false}
             expanded={false}
             active={selectedPath === path}
@@ -269,6 +270,7 @@ function Row({
   depth,
   label,
   isDir,
+  fileKind,
   hasChildren,
   expanded,
   active,
@@ -279,6 +281,8 @@ function Row({
   depth: number;
   label: string;
   isDir: boolean;
+  // Media kind for file rows — picks the glyph (video / audio / image).
+  fileKind?: ReturnType<typeof mediaKind>;
   hasChildren: boolean;
   expanded: boolean;
   active: boolean;
@@ -329,10 +333,20 @@ function Row({
         type="button"
         onClick={onActivate}
         title={label}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-1.5 py-px text-left"
       >
-        {isDir ? <FolderGlyph /> : <FileGlyph />}
-        <span className="truncate text-[13px]">{label}</span>
+        {isDir ? (
+          <FolderGlyph />
+        ) : fileKind === "video" ? (
+          <VideoGlyph />
+        ) : fileKind === "audio" ? (
+          <AudioGlyph />
+        ) : fileKind === "image" ? (
+          <ImageGlyph />
+        ) : (
+          <FileGlyph />
+        )}
+        <span className="truncate text-sm">{label}</span>
         {unread && <UnreadBadge className="ml-auto pl-1" />}
       </button>
     </div>
@@ -370,6 +384,62 @@ function FileGlyph() {
     >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
+    </svg>
+  );
+}
+
+function VideoGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5 shrink-0 text-accent"
+      aria-hidden
+    >
+      <rect x="2.5" y="6" width="13" height="12" rx="2" />
+      <path d="M15.5 10.5 21 7.5v9l-5.5-3z" />
+    </svg>
+  );
+}
+
+function AudioGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5 shrink-0 text-emerald-300/90"
+      aria-hidden
+    >
+      <path d="M9 18V6l11-2v12" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="17" cy="16" r="3" />
+    </svg>
+  );
+}
+
+function ImageGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5 shrink-0 text-violet-300/90"
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m5 17 4.5-4.5L13 16l3-3 3 3" />
     </svg>
   );
 }

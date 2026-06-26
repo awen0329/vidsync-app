@@ -11,7 +11,8 @@ import { ConflictsBanner } from "../components/ConflictsBanner";
 import { ErrorsBanner } from "../components/ErrorsBanner";
 import { LocalChangesBanner } from "../components/LocalChangesBanner";
 import { ActivityFeed } from "../components/ActivityFeed";
-import { FileGrid } from "../components/FileGrid";
+import { FileGrid, type ProjectMemberSummary } from "../components/FileGrid";
+import { LazyVideoReviewPanel } from "../components/LazyVideoReviewPanel";
 import type { VideoPreviewFile } from "../components/VideoPreviewModal";
 import { DropboxModal } from "../components/DropboxModal";
 import { BackupCard } from "../components/BackupCard";
@@ -30,7 +31,7 @@ import {
   useResyncFolder,
 } from "../api/hooks";
 import { APIError, client } from "../api/client";
-import { useFolderState } from "../realtime/hooks";
+import { useAllPeerStates, useFolderState } from "../realtime/hooks";
 import {
   useAccountEmail,
   useCreateInvitation,
@@ -47,10 +48,9 @@ import {
   lookupAcceptedInvitation,
 } from "../api/cloud/acceptedInvitations";
 import { origins } from "../api/origins";
-import { humanizeFolderError, humanRelative } from "../lib/format";
+import { humanBytes, humanizeFolderError, humanRelative } from "../lib/format";
 import { useThumbnailIndexer } from "../lib/useThumbnailIndexer";
 import { bc } from "../lib/breadcrumb";
-import { isExplorerAvailable, openInExplorer } from "../lib/openInExplorer";
 import { cn } from "../lib/utils";
 import type { Configuration, FolderConfiguration } from "../api/types";
 
@@ -79,8 +79,7 @@ export function ProjectDetail({
   navPath,
   navPreview,
   navSeq,
-  filesPanelVisible,
-  onToggleFilesPanel,
+  projectsNav,
 }: {
   folderID: string;
   onBack: () => void;
@@ -91,10 +90,9 @@ export function ProjectDetail({
   navPath?: string;
   navPreview?: VideoPreviewFile | null;
   navSeq?: number;
-  // The persistent ProjectsNav's visibility + toggle, surfaced to the
-  // review player's "files panel" layout button.
-  filesPanelVisible?: boolean;
-  onToggleFilesPanel?: () => void;
+  // The projects navigator, rendered as the leftmost dock so the top bar
+  // can span across it. Hidden by the 1st layout toggle.
+  projectsNav?: React.ReactNode;
 }) {
   const cfg = useConfig();
   const status = useSystemStatus();
@@ -126,8 +124,7 @@ export function ProjectDetail({
         navPath={navPath}
         navPreview={navPreview}
         navSeq={navSeq}
-        filesPanelVisible={filesPanelVisible}
-        onToggleFilesPanel={onToggleFilesPanel}
+        projectsNav={projectsNav}
         onBack={onBack}
       />
     </div>
@@ -142,8 +139,7 @@ function Body({
   navPath,
   navPreview,
   navSeq,
-  filesPanelVisible,
-  onToggleFilesPanel,
+  projectsNav,
   onBack,
 }: {
   folder: FolderConfiguration;
@@ -153,8 +149,7 @@ function Body({
   navPath?: string;
   navPreview?: VideoPreviewFile | null;
   navSeq?: number;
-  filesPanelVisible?: boolean;
-  onToggleFilesPanel?: () => void;
+  projectsNav?: React.ReactNode;
   onBack: () => void;
 }) {
   const cfg = useConfig();
@@ -176,6 +171,12 @@ function Body({
   // Both owned and invited projects open on Files — the content is
   // what users come to see; Team is a click away for owners who want it.
   const [tab, setTab] = useState<ProjectTab>("files");
+  // The three top-bar layout toggles: projects sidebar / player / comments.
+  const [showProjectsNav, setShowProjectsNav] = useState(true);
+  const [showPlayer, setShowPlayer] = useState(true);
+  const [showComments, setShowComments] = useState(true);
+  // Resizable width of the file-list dock when the player sits beside it.
+  const [filePanelWidth, setFilePanelWidth] = useState(440);
   // Shared navigation state for the Files tab: the FileTree (left pane)
   // and FileGrid (right pane) both read/write this so they stay in sync.
   // "" = project root. `showTree` lets the user reclaim the tree's width.
@@ -251,6 +252,7 @@ function Body({
 
   const allDevices = cfg.data?.devices ?? [];
   const members = folder.devices.filter((d) => d.deviceID !== myID);
+  const peers = useAllPeerStates();
 
   // The realtime store only sees a folder once the daemon emits a
   // FolderSummary event for it. On a settled folder the daemon may
@@ -301,57 +303,95 @@ function Body({
     folder.paused,
     fs?.completion,
   );
+  // Collaborator avatars for the file toolbar's member stack. Labels come
+  // from the daemon's known-devices list; presence from the peer states.
+  const memberAvatars: ProjectMemberSummary[] = members.map((m) => {
+    const p = peers[m.deviceID];
+    const online = !!p && p.connected && !p.paused;
+    return {
+      id: m.deviceID,
+      label: allDevices.find((d) => d.deviceID === m.deviceID)?.name || "Member",
+      state: online ? "online" : "offline",
+    };
+  });
+  const lastUpdated =
+    fs?.lastSeqChanged ?? fs?.stateChanged ?? stat?.stateChanged;
+
+  // Player dock open ⇢ a clip is selected, on the Files view, and the
+  // player toggle is on. When open, the file panel becomes a fixed,
+  // resizable width and the player fills the rest.
+  const playerOpen = tab === "files" && !!preview && showPlayer;
+  const startFilePanelResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = filePanelWidth;
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(720, Math.max(280, startW + (ev.clientX - startX)));
+      setFilePanelWidth(next);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const DOCK = "rounded-xl border border-line bg-panel";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Slim project header — replaces the cinematic hero + tab strip.
-          Identity + status on the left; collaborators, Share, and the
-          per-project actions on the right. Files / Team / Activity are
-          switched via the name, the members chip, and the actions menu
-          rather than a visible tab bar. */}
-      <header className="flex shrink-0 items-center gap-3 border-b border-line px-5 py-2.5">
+    <div className="flex h-full min-h-0 flex-col gap-1.5">
+      {/* Top bar — one dock spanning across the projects sidebar + the
+          content docks. Breadcrumb on the left; project info, actions, and
+          the three layout toggles on the right. */}
+      <div className={cn(DOCK, "flex shrink-0 items-center gap-2 px-2.5 py-1.5")}>
         <button
           type="button"
-          onClick={() => setTab("files")}
-          className={cn(
-            "truncate text-sm font-semibold transition-colors",
-            tab === "files" ? "text-fg-strong" : "text-fg-soft hover:text-fg-strong",
-          )}
+          onClick={() => navigate("")}
+          className="flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-hover"
           title={folder.label || folder.id}
         >
-          {folder.label || folder.id}
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-elevated text-fg-soft">
+            <FolderGlyph />
+          </span>
+          <span className="max-w-[180px] truncate text-sm font-semibold text-fg-strong">
+            {folder.label || folder.id}
+          </span>
         </button>
-        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-fg-soft ring-1 ring-line">
-          {isOwnedLabel}
-        </span>
-        <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-elevated px-2.5 py-1 text-[11px] font-medium ring-1 ring-line sm:inline-flex">
-          <span className={cn("h-1.5 w-1.5 rounded-full", statusView.dot)} aria-hidden />
-          <span className={statusView.text}>{statusView.label}</span>
-        </span>
-        <div className="hidden min-w-0 lg:block">
-          <FolderPathLink path={folder.path} />
-        </div>
-        <TabActions
-          folderID={folder.id}
-          errorCount={errorCount}
-          onOpenActivity={() => setTab("activity")}
+        <TopBreadcrumb
+          path={tab === "files" ? filesPath : ""}
+          onNavigate={(p) => {
+            setTab("files");
+            navigate(p);
+          }}
         />
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTab("team")}
-            title="Team"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
-              tab === "team"
-                ? "bg-accent/15 text-accent"
-                : "text-fg-soft hover:bg-hover hover:text-fg-strong",
-            )}
-          >
-            <InviteIcon />
-            {editors} editor{editors === 1 ? "" : "s"}
-          </button>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <span className="hidden items-center gap-1.5 rounded-full bg-elevated px-2.5 py-1 text-[11px] font-medium ring-1 ring-line md:inline-flex">
+            <span className={cn("h-1.5 w-1.5 rounded-full", statusView.dot)} aria-hidden />
+            <span className={statusView.text}>{statusView.label}</span>
+          </span>
+          <span className="hidden text-[11px] text-fg-soft xl:inline">
+            {humanBytes(globalBytes)}
+          </span>
+          {lastUpdated && (
+            <span className="hidden text-[11px] text-fg-faint xl:inline">
+              · synced {humanRelative(lastUpdated)}
+            </span>
+          )}
+          <span className="hidden rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-fg-soft ring-1 ring-line lg:inline">
+            {isOwnedLabel}
+          </span>
+          <TabActions
+            folderID={folder.id}
+            errorCount={errorCount}
+            onOpenActivity={() => setTab("activity")}
+          />
+          <div className="mx-0.5 h-5 w-px bg-line" />
           <button
             type="button"
             onClick={() => setTab("activity")}
@@ -366,7 +406,6 @@ function Body({
           >
             <ActivityGlyph />
           </button>
-          <div className="mx-0.5 h-5 w-px bg-line" />
           <HeaderIconButton ariaLabel="Edit project" onClick={() => setEditing(true)}>
             <EditIcon />
           </HeaderIconButton>
@@ -397,77 +436,122 @@ function Body({
             <button
               type="button"
               onClick={() => setInviting(true)}
-              className="ml-1 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-xs font-semibold text-accent-fg shadow-sm transition-colors hover:bg-accent-hover"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg shadow-sm transition-colors hover:bg-accent-hover"
             >
               <InviteIcon />
               Share
             </button>
           )}
+          <div className="mx-0.5 h-5 w-px bg-line" />
+          <div className="inline-flex items-center rounded-lg bg-base p-0.5 ring-1 ring-line">
+            <LayoutToggle
+              side="left"
+              active={showProjectsNav}
+              onClick={() => setShowProjectsNav((v) => !v)}
+              title={showProjectsNav ? "Hide projects" : "Show projects"}
+            />
+            <LayoutToggle
+              side="center"
+              active={playerOpen}
+              onClick={() => setShowPlayer((v) => !v)}
+              title={showPlayer ? "Hide player" : "Show player"}
+            />
+            <LayoutToggle
+              side="right"
+              active={showComments}
+              onClick={() => setShowComments((v) => !v)}
+              title={showComments ? "Hide comments" : "Show comments"}
+            />
+          </div>
         </div>
-      </header>
+      </div>
 
       <ConflictsBanner folderID={folder.id} />
 
-      {/* Content area. All three views stay mounted and toggle via CSS
-          (display) rather than conditional render — unmount/remount on a
-          rapid Files↔Team flip used to tear down every in-flight thumbnail
-          decoder and crash WebView2. */}
-      <div className="relative min-h-0 flex-1">
+      {/* Content docks row: projects sidebar · main panel · player. The
+          three main views (files / team / activity) stay mounted and toggle
+          via CSS (display) rather than unmount/remount — rapid Files↔Team
+          flips otherwise tore down in-flight thumbnail decoders and crashed
+          WebView2. */}
+      <div className="flex min-h-0 flex-1 gap-1.5">
+        {showProjectsNav && projectsNav}
+
         <div
-          className={cn(
-            "absolute inset-0 px-5",
-            tab === "files" ? "block" : "hidden",
-          )}
+          className={cn(DOCK, "flex min-w-0 flex-col overflow-hidden")}
+          style={
+            playerOpen ? { width: filePanelWidth, flexShrink: 0 } : { flex: "1 1 0%" }
+          }
         >
-          <FileGrid
-            folderID={folder.id}
-            folderPath={folder.path}
-            folderType={folder.type as string}
-            currentPath={filesPath}
-            onNavigate={navigate}
-            preview={preview}
-            onPreview={openPreview}
-            filesPanelVisible={filesPanelVisible}
-            onToggleFilesPanel={onToggleFilesPanel}
-          />
-        </div>
-        <div
-          className={cn(
-            "absolute inset-0 overflow-y-auto px-5 py-4",
-            tab === "team" ? "block" : "hidden",
-          )}
-        >
-          <TeamPanel
-            folder={folder}
-            members={members}
-            allDevices={allDevices}
-            isOwned={isOwned}
-            myID={myID}
-            onInvite={() => setInviting(true)}
-            onRemove={(deviceID) => {
-              const updated: FolderConfiguration = {
-                ...folder,
-                devices: folder.devices.filter((d) => d.deviceID !== deviceID),
-              };
-              put.mutate(updated);
-            }}
-          />
-          <div className="pb-6 pt-2">
-            <BackupCard folder={folder} isOwned={isOwned} myID={myID} />
+          <div className={cn("min-h-0 flex-1", tab === "files" ? "flex flex-col" : "hidden")}>
+            <FileGrid
+              folderID={folder.id}
+              folderPath={folder.path}
+              folderType={folder.type as string}
+              currentPath={filesPath}
+              onNavigate={navigate}
+              preview={preview}
+              onPreview={openPreview}
+              compact={playerOpen}
+              members={memberAvatars}
+              memberCount={editors}
+              onOpenTeam={() => setTab("team")}
+            />
+          </div>
+          <div
+            className={cn(
+              "min-h-0 flex-1 overflow-y-auto px-4 py-4",
+              tab === "team" ? "block" : "hidden",
+            )}
+          >
+            <TeamPanel
+              folder={folder}
+              members={members}
+              allDevices={allDevices}
+              isOwned={isOwned}
+              myID={myID}
+              onInvite={() => setInviting(true)}
+              onRemove={(deviceID) => {
+                const updated: FolderConfiguration = {
+                  ...folder,
+                  devices: folder.devices.filter((d) => d.deviceID !== deviceID),
+                };
+                put.mutate(updated);
+              }}
+            />
+            <div className="pb-6 pt-2">
+              <BackupCard folder={folder} isOwned={isOwned} myID={myID} />
+            </div>
+          </div>
+          <div
+            className={cn(
+              "min-h-0 flex-1 overflow-y-auto px-4 py-4",
+              tab === "activity" ? "block" : "hidden",
+            )}
+          >
+            <div className="flex h-full min-h-0 flex-col gap-4">
+              <LocalChangesBanner folderID={folder.id} />
+              <ErrorsBanner folderID={folder.id} />
+              <ActivityFeed folderID={folder.id} />
+            </div>
           </div>
         </div>
-        <div
-          className={cn(
-            "absolute inset-0 overflow-y-auto px-5 py-4",
-            tab === "activity" ? "block" : "hidden",
-          )}
-        >
-          <div className="flex h-full min-h-0 flex-col gap-4">
-            <LocalChangesBanner folderID={folder.id} />
-            <ErrorsBanner folderID={folder.id} />
-            <ActivityFeed folderID={folder.id} />
+
+        {playerOpen && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize file panel"
+            onPointerDown={startFilePanelResize}
+            className="group flex w-1.5 shrink-0 cursor-col-resize items-center justify-center"
+          >
+            <span className="h-10 w-1 rounded-full bg-line-strong transition-colors group-hover:bg-accent" />
           </div>
-        </div>
+        )}
+        {playerOpen && (
+          <div className={cn(DOCK, "flex min-w-0 flex-1 flex-col overflow-hidden")}>
+            <LazyVideoReviewPanel file={preview} showComments={showComments} />
+          </div>
+        )}
       </div>
 
 
@@ -568,36 +652,80 @@ function DropboxIcon() {
   );
 }
 
-// FolderPathLink sits under the project title in the hero. Clicking
-// it asks the host to open the OS file manager at that path; in dev
-// or browser builds where the binding isn't bound, we render the
-// path as plain non-interactive text so it still serves as a
-// reference but doesn't dangle a dead affordance.
-function FolderPathLink({ path }: { path: string }) {
-  if (!path) return null;
-  const clickable = isExplorerAvailable();
-  const common =
-    "mt-1 inline-flex max-w-full items-center gap-1.5 font-mono text-xs text-white/75 drop-shadow";
-  if (!clickable) {
-    return (
-      <span className={common} title={path}>
-        <FolderGlyph />
-        <span className="truncate">{path}</span>
-      </span>
-    );
-  }
+// TopBreadcrumb renders the "/ folder / subfolder" trail after the project
+// name in the top bar. Each segment navigates the file browser to that level.
+function TopBreadcrumb({
+  path,
+  onNavigate,
+}: {
+  path: string;
+  onNavigate: (next: string) => void;
+}) {
+  const segments = path ? path.split("/") : [];
+  if (segments.length === 0) return null;
+  return (
+    <nav className="flex min-w-0 items-center gap-1 text-sm text-fg-soft" aria-label="Breadcrumb">
+      {segments.map((seg, i) => {
+        const target = segments.slice(0, i + 1).join("/");
+        const isLast = i === segments.length - 1;
+        return (
+          <span key={target} className="flex min-w-0 items-center gap-1">
+            <span className="text-fg-faint">/</span>
+            <button
+              type="button"
+              onClick={() => onNavigate(target)}
+              className={cn(
+                "truncate rounded-md px-1.5 py-0.5 transition-colors",
+                isLast ? "text-fg-strong" : "hover:bg-hover hover:text-fg-strong",
+              )}
+            >
+              {seg}
+            </button>
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+// LayoutToggle: one segment of the three-up layout control in the top bar.
+// Each draws a window glyph with the relevant region filled — left panel,
+// center stage, or right panel — and lights cobalt when its panel is shown.
+function LayoutToggle({
+  active,
+  onClick,
+  title,
+  side,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  side: "left" | "center" | "right";
+}) {
   return (
     <button
       type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        openInExplorer(path);
-      }}
-      title={`Open in Explorer: ${path}`}
-      className={`${common} rounded px-1 -mx-1 hover:bg-black/30 hover:text-white`}
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      className={cn(
+        "flex h-7 w-8 items-center justify-center rounded-md transition-colors",
+        active
+          ? "bg-accent/20 text-accent"
+          : "text-fg-soft hover:bg-hover hover:text-fg-strong",
+      )}
     >
-      <FolderGlyph />
-      <span className="truncate">{path}</span>
+      <svg viewBox="0 0 22 18" fill="none" className="h-4 w-[18px]" aria-hidden>
+        <rect x="1.5" y="2" width="19" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
+        {side === "left" && (
+          <rect x="1.5" y="2" width="6.5" height="14" rx="2.5" fill="currentColor" fillOpacity="0.55" />
+        )}
+        {side === "center" && <path d="M9 6.5 13.5 9 9 11.5z" fill="currentColor" />}
+        {side === "right" && (
+          <rect x="14" y="2" width="6.5" height="14" rx="2.5" fill="currentColor" fillOpacity="0.55" />
+        )}
+      </svg>
     </button>
   );
 }

@@ -1,9 +1,8 @@
 import { lazy, Suspense } from "react";
 import type { VideoPreviewFile } from "./VideoPreviewModal";
 
-// Code-split the inline review player, mirroring LazyVideoPreviewModal.
-// The chunk (video handling, comments, scrubber) only loads when a user
-// actually opens a video in the file browser.
+// Code-split the review player dock (video handling, comments, scrubber);
+// the chunk only loads when a user actually opens a clip.
 const Inner = lazy(() =>
   import("./player/VideoReviewPanel").then((m) => ({
     default: m.VideoReviewPanel,
@@ -12,24 +11,15 @@ const Inner = lazy(() =>
 
 export function LazyVideoReviewPanel({
   file,
-  onClose,
-  filesPanelVisible,
-  onToggleFilesPanel,
+  showComments,
 }: {
   file: VideoPreviewFile | null;
-  onClose: () => void;
-  filesPanelVisible?: boolean;
-  onToggleFilesPanel?: () => void;
+  showComments?: boolean;
 }) {
   if (!file) return null;
   return (
     <Suspense fallback={null}>
-      <Inner
-        file={file}
-        onClose={onClose}
-        filesPanelVisible={filesPanelVisible}
-        onToggleFilesPanel={onToggleFilesPanel}
-      />
+      <Inner file={file} showComments={showComments} />
     </Suspense>
   );
 }

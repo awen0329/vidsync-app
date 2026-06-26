@@ -94,11 +94,10 @@
     background-color: rgb(var(--base));
     color: rgb(var(--fg-default));
     @apply antialiased;
-    /* System UI stack matching each OS's default app font:
-       San Francisco on macOS, Segoe UI Variable on Windows 11
-       (Segoe UI fallback for Win 10), Inter/Ubuntu/Cantarell on
-       Linux via `system-ui`. */
+    /* App UI font: IBM Plex Sans Condensed (loaded in index.html), with a
+       system stack fallback if the webfont hasn't loaded yet / is offline. */
     font-family:
+      "IBM Plex Sans Condensed",
       -apple-system,
       BlinkMacSystemFont,
       "Segoe UI Variable",

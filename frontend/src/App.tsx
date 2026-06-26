@@ -248,10 +248,6 @@ function AppShell() {
   const [view, setView] = useState<View>(() => loadLastView());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  // The persistent ProjectsNav's collapsed state. Shared so the review
-  // player's "files panel" layout toggle can hide/show the navigator —
-  // the navigator IS the player's files panel in the Frame.io shell.
-  const [navCollapsed, setNavCollapsed] = useState(false);
   const [droppedPath, setDroppedPath] = useState<string | undefined>(undefined);
   const status = useSystemStatus();
   const myID = status.data?.myID ?? "";
@@ -319,20 +315,27 @@ function AppShell() {
   const activeSection: Section =
     view.kind === "section" ? view.section : "projects";
 
+  // The projects navigator dock — reused by both the project workspace
+  // (where ProjectDetail places it so the top bar can span across it) and
+  // the section views.
+  const projectsNavEl = (
+    <ProjectsNav
+      folders={folders}
+      activeFolderID={view.kind === "project" ? view.folderID : null}
+      allProjectsActive={view.kind === "section" && view.section === "projects"}
+      onOpenAllProjects={() => goToSection("projects")}
+      onOpenProject={(folderID, opts) => goToProject(folderID, opts)}
+      onCreate={() => setCreating(true)}
+    />
+  );
+
   return (
-    <div className="flex h-full bg-base text-fg">
+    <div className="flex h-full gap-1.5 bg-base p-1.5 text-fg">
       {/* Auto-trusts collaborator devices in the background so project
           shares just start syncing — no manual device-connect prompt. */}
       <PendingDeviceAutoAccept />
       {/* In-app toast stack (new-comment notifications, etc.). */}
       <Toaster />
-      {/* Safe area for native window chrome. Zero-height in the
-          browser; a desktop wrapper sets --titlebar-h on :root. */}
-      <div
-        className="shrink-0"
-        style={{ height: "var(--titlebar-h, 0px)" }}
-        aria-hidden
-      />
       <NavRail
         section={activeSection}
         onSection={goToSection}
@@ -340,21 +343,11 @@ function AppShell() {
         pendingCount={usePendingCount()}
         transferCount={useAllTransfers().length}
       />
-      <ProjectsNav
-        folders={folders}
-        activeFolderID={view.kind === "project" ? view.folderID : null}
-        allProjectsActive={view.kind === "section" && view.section === "projects"}
-        collapsed={navCollapsed}
-        onSetCollapsed={setNavCollapsed}
-        onOpenAllProjects={() => goToSection("projects")}
-        onOpenProject={(folderID, opts) => goToProject(folderID, opts)}
-        onCreate={() => setCreating(true)}
-      />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <OfflineBanner />
         <DaemonFatalBanner />
         <EntitlementBanner onOpenPricing={() => goToSection("billing")} />
-        <main id="vidsync-main" className="relative flex-1 overflow-hidden">
+        <div className="relative flex min-h-0 flex-1">
           {view.kind === "project" ? (
             <ProjectDetail
               key={view.folderID}
@@ -363,31 +356,30 @@ function AppShell() {
               navPath={view.path}
               navPreview={view.preview}
               navSeq={view.seq}
-              filesPanelVisible={!navCollapsed}
-              onToggleFilesPanel={() => setNavCollapsed((c) => !c)}
+              projectsNav={projectsNavEl}
               onBack={backToProjects}
             />
           ) : (
-            // Section chunks normally load in well under a frame, so a
-            // spinner is overkill. But a literal null fallback hides
-            // *any* loading state — including a chunk that fails to
-            // fetch (renders blank, indistinguishable from "nothing
-            // selected"). A subtle text marker keeps cold-launch nav
-            // honest without flashing on warm transitions.
-            <Suspense fallback={<SectionLoading />}>
-              <SectionRouter
-                section={view.section}
-                onOpenProject={openProjectFromPage}
-                onCreate={() => setCreating(true)}
-                onOpenBilling={
-                  AUTH_ENABLED && !HIDE_BILLING
-                    ? () => goToSection("billing")
-                    : undefined
-                }
-              />
-            </Suspense>
+            <div className="flex min-h-0 flex-1 gap-1.5">
+              {projectsNavEl}
+              {/* Section content dock. */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-panel">
+                <Suspense fallback={<SectionLoading />}>
+                  <SectionRouter
+                    section={view.section}
+                    onOpenProject={openProjectFromPage}
+                    onCreate={() => setCreating(true)}
+                    onOpenBilling={
+                      AUTH_ENABLED && !HIDE_BILLING
+                        ? () => goToSection("billing")
+                        : undefined
+                    }
+                  />
+                </Suspense>
+              </div>
+            </div>
           )}
-        </main>
+        </div>
         <TransferDock />
       </div>
       {/* Only mount the lazy modal trees once the user has actually
