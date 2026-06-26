@@ -34,3 +34,6 @@ deb
 .tools/
 # Throwaway Chrome profile used for rendering design mockups
 design/.chrome-tmp/
+
+# Build logs
+wails-build*.log
