@@ -32,3 +32,5 @@ deb
 
 # wails-downloaded build toolchain (NSIS installer, etc.)
 .tools/
+# Throwaway Chrome profile used for rendering design mockups
+design/.chrome-tmp/
