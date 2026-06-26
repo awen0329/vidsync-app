@@ -100,9 +100,14 @@ function sortToFieldLabel(sort: SortKey): string {
 // toolbar's Appearance popover (mirrors Frame.io). Persisted to
 // localStorage so the chosen density/aspect sticks across sessions.
 type CardSize = "S" | "M" | "L";
-type CardAspect = "video" | "square";
+type CardAspect = "video" | "square" | "portrait";
 type CardScale = "fill" | "fit";
 type CardView = "grid" | "list";
+
+// Tailwind aspect class for a card aspect (16:9 / 1:1 / 9:16). Literal strings
+// so the JIT picks them up.
+const aspectClass = (a: CardAspect) =>
+  a === "square" ? "aspect-square" : a === "portrait" ? "aspect-[9/16]" : "aspect-video";
 
 interface Appearance {
   // Grid of cards, or a compact list of rows.
@@ -1215,8 +1220,27 @@ function AppearanceMenu({
               label="View"
               value={appearance.view}
               options={[
-                { value: "grid", label: "Grid" },
-                { value: "list", label: "List" },
+                {
+                  value: "grid",
+                  label: "Grid",
+                  icon: (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4" aria-hidden>
+                      <rect x="1" y="1" width="6" height="6" rx="1.3" />
+                      <rect x="9" y="1" width="6" height="6" rx="1.3" />
+                      <rect x="1" y="9" width="6" height="6" rx="1.3" />
+                      <rect x="9" y="9" width="6" height="6" rx="1.3" />
+                    </svg>
+                  ),
+                },
+                {
+                  value: "list",
+                  label: "List",
+                  icon: (
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" className="h-4 w-4" aria-hidden>
+                      <path d="M3 4h10M3 8h10M3 12h10" />
+                    </svg>
+                  ),
+                },
               ]}
               onChange={(view) => onAppearance({ view: view as CardView })}
             />
@@ -1234,8 +1258,33 @@ function AppearanceMenu({
               label="Aspect Ratio"
               value={appearance.aspect}
               options={[
-                { value: "video", label: "16:9" },
-                { value: "square", label: "1:1" },
+                {
+                  value: "video",
+                  label: "16:9",
+                  icon: (
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4" aria-hidden>
+                      <rect x="2" y="5.5" width="16" height="9" rx="1.3" />
+                    </svg>
+                  ),
+                },
+                {
+                  value: "square",
+                  label: "1:1",
+                  icon: (
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4" aria-hidden>
+                      <rect x="4.5" y="4.5" width="11" height="11" rx="1.3" />
+                    </svg>
+                  ),
+                },
+                {
+                  value: "portrait",
+                  label: "9:16",
+                  icon: (
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4" aria-hidden>
+                      <rect x="5.5" y="2" width="9" height="16" rx="1.3" />
+                    </svg>
+                  ),
+                },
               ]}
               onChange={(aspect) => onAppearance({ aspect: aspect as CardAspect })}
             />
@@ -1279,7 +1328,7 @@ function Segmented({
 }: {
   label: string;
   value: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; icon?: JSX.Element }[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -1291,14 +1340,17 @@ function Segmented({
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
+            title={o.label}
+            aria-label={o.label}
             className={cn(
-              "rounded px-2 py-0.5 font-medium transition-colors",
+              "flex items-center justify-center rounded font-medium transition-colors",
+              o.icon ? "px-2.5 py-1" : "px-2 py-0.5",
               value === o.value
                 ? "bg-accent/20 text-accent"
                 : "text-fg-soft hover:text-fg-strong",
             )}
           >
-            {o.label}
+            {o.icon ?? o.label}
           </button>
         ))}
       </div>
@@ -1408,6 +1460,9 @@ function FileTile({
       )}
       title={`${file.path}\n${humanBytes(file.size)}`}
       onClick={() => {
+        // Clicking the card selects it (ticks its checkbox) and opens the
+        // preview surface; the checkbox button itself still toggles on its own.
+        onToggleSelect?.();
         if (openable) onPreview();
       }}
       onMouseEnter={onEnter}
@@ -1443,7 +1498,7 @@ function FileTile({
       <div
         className={cn(
           "relative w-full overflow-hidden bg-black",
-          appearance.aspect === "square" ? "aspect-square" : "aspect-video",
+          aspectClass(appearance.aspect),
         )}
       >
         <TileThumbnail
@@ -1533,7 +1588,7 @@ function FolderTile({
       <div
         className={cn(
           "relative w-full overflow-hidden",
-          appearance.aspect === "square" ? "aspect-square" : "aspect-video",
+          aspectClass(appearance.aspect),
         )}
         style={{ backgroundImage: folderGradient(entry.path) }}
       >
@@ -1714,6 +1769,7 @@ function FileRow({
         openable ? "cursor-pointer" : "cursor-default",
       )}
       onClick={() => {
+        onToggleSelect?.();
         if (openable) onPreview();
       }}
       onContextMenu={(e) => {
