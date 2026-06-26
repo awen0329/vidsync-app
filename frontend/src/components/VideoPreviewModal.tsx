@@ -57,7 +57,7 @@ export function VideoPreviewModal({
       onClick={onClose}
     >
       <div
-        className="relative flex h-[88vh] w-full max-w-7xl overflow-hidden rounded-xl border border-line bg-panel"
+        className="relative flex h-[88vh] w-full max-w-7xl gap-1.5"
         onClick={(e) => e.stopPropagation()}
       >
         <button

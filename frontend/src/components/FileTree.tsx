@@ -62,6 +62,7 @@ export function FileTree({
   folderID,
   currentPath,
   selectedPath,
+  showRoot = true,
   onNavigate,
   onPreview,
 }: {
@@ -71,6 +72,9 @@ export function FileTree({
   // POSIX path of the video currently open in the player, so its row can be
   // highlighted (and its branch revealed). null when no video is open.
   selectedPath?: string | null;
+  // Show the top-level "Project" root row. Hidden inside the ProjectsNav,
+  // where the project name above already serves as the root.
+  showRoot?: boolean;
   onNavigate: (path: string) => void;
   // Open a playable video in the review player. When omitted, clicking a
   // file just navigates the grid to its parent (legacy behavior).
@@ -123,21 +127,24 @@ export function FileTree({
 
   return (
     <div className="py-1 text-sm">
-      {/* Root row — jumps the grid back to the project root. */}
-      <Row
-        depth={0}
-        label="Project"
-        isDir
-        hasChildren
-        expanded
-        active={currentPath === ""}
-        onToggle={() => onNavigate("")}
-        onActivate={() => onNavigate("")}
-      />
+      {/* Root row — jumps the grid back to the project root. Hidden inside
+          the ProjectsNav, where the project name already serves as root. */}
+      {showRoot && (
+        <Row
+          depth={0}
+          label="Project"
+          isDir
+          hasChildren
+          expanded
+          active={currentPath === ""}
+          onToggle={() => onNavigate("")}
+          onActivate={() => onNavigate("")}
+        />
+      )}
       <TreeLevel
         nodes={root}
         prefix=""
-        depth={1}
+        depth={showRoot ? 1 : 0}
         expanded={expanded}
         currentPath={currentPath}
         selectedPath={selectedPath}
@@ -298,8 +305,8 @@ function Row({
       className={cn(
         "group flex items-center gap-1 rounded-md py-1 pr-2 transition-colors",
         active
-          ? "bg-accent/15 text-accent"
-          : "text-fg-soft hover:bg-hover hover:text-fg-strong",
+          ? "bg-hover text-fg-strong"
+          : "text-fg-soft hover:bg-hover/60 hover:text-fg-strong",
       )}
       style={{ paddingLeft: padLeft }}
     >

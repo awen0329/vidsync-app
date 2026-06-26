@@ -35,19 +35,30 @@ export function NavRail({
   pendingCount: number;
   transferCount: number;
 }) {
+  // Tint the rail with the user's avatar hue, fading to near-black.
+  const email = useAccountEmail();
+  const hue = avatarHue(email);
+  const railGradient = `linear-gradient(to bottom, hsl(${hue} 38% 16%) 0%, hsl(${hue} 26% 9%) 42%, #070a10 100%)`;
   return (
-    <nav className="flex w-[60px] shrink-0 flex-col items-center rounded-xl border border-line bg-rail py-4">
-      <button
-        type="button"
-        onClick={() => onSection("projects")}
-        title="Home"
-        aria-label="Home"
-        className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl ring-1 ring-line transition-transform hover:scale-105"
-      >
-        <VidSyncLogo className="h-7 w-7" />
-      </button>
+    <nav
+      className="flex w-[60px] shrink-0 flex-col items-center rounded-xl border border-line pb-4"
+      style={{ backgroundImage: railGradient }}
+    >
+      {/* Logo header — matched to the top bar's height so the mark
+          baselines with the project breadcrumb in the bar to its right. */}
+      <div className="flex h-12 w-full shrink-0 items-center justify-center">
+        <button
+          type="button"
+          onClick={() => onSection("projects")}
+          title="Home"
+          aria-label="Home"
+          className="flex h-9 w-9 items-center justify-center rounded-xl ring-1 ring-line transition-transform hover:scale-105"
+        >
+          <VidSyncLogo className="h-6 w-6" />
+        </button>
+      </div>
 
-      <div className="flex flex-1 flex-col items-center gap-1.5">
+      <div className="flex flex-1 flex-col items-center gap-1.5 pt-1">
         <RailButton
           label="Search"
           active={false}
@@ -259,7 +270,10 @@ function ProfileMenu({ onOpenSettings }: { onOpenSettings: () => void }) {
         onClick={() => setOpen((o) => !o)}
         title={email || "Account"}
         aria-label="Account menu"
-        className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent ring-1 ring-accent/40 transition-opacity hover:opacity-80"
+        className="mt-1 flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white ring-1 ring-white/20 transition-opacity hover:opacity-80"
+        style={{
+          backgroundImage: `linear-gradient(135deg, hsl(${avatarHue(email)} 60% 55%), hsl(${avatarHue(email)} 55% 40%))`,
+        }}
       >
         {initial}
       </button>
@@ -359,6 +373,15 @@ function SettingsIcon({ className }: { className?: string }) {
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" strokeWidth="1.4" />
     </svg>
   );
+}
+
+// avatarHue derives a stable hue from the user's email so the profile avatar
+// and the rail's gradient tint share one per-user color.
+function avatarHue(seed: string): number {
+  const s = seed || "vidsync";
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
 }
 
 function SignOutIcon() {

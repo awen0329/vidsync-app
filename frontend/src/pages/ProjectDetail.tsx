@@ -12,7 +12,12 @@ import { ErrorsBanner } from "../components/ErrorsBanner";
 import { LocalChangesBanner } from "../components/LocalChangesBanner";
 import { ActivityFeed } from "../components/ActivityFeed";
 import { FileGrid, type ProjectMemberSummary } from "../components/FileGrid";
-import { LazyVideoReviewPanel } from "../components/LazyVideoReviewPanel";
+import {
+  ReviewProvider,
+  PlayerStage,
+  CommentsPane,
+} from "../components/player/ReviewContext";
+import { ResizeHandle } from "../components/ResizeHandle";
 import type { VideoPreviewFile } from "../components/VideoPreviewModal";
 import { DropboxModal } from "../components/DropboxModal";
 import { BackupCard } from "../components/BackupCard";
@@ -172,11 +177,14 @@ function Body({
   // what users come to see; Team is a click away for owners who want it.
   const [tab, setTab] = useState<ProjectTab>("files");
   // The three top-bar layout toggles: projects sidebar / player / comments.
+  // Player starts hidden — opening a clip reveals it, or the toggle shows the
+  // empty-state player without a selection.
   const [showProjectsNav, setShowProjectsNav] = useState(true);
-  const [showPlayer, setShowPlayer] = useState(true);
+  const [showPlayer, setShowPlayer] = useState(false);
   const [showComments, setShowComments] = useState(true);
-  // Resizable width of the file-list dock when the player sits beside it.
+  // Resizable widths of the file-list dock and the comments dock.
   const [filePanelWidth, setFilePanelWidth] = useState(440);
+  const [commentsWidth, setCommentsWidth] = useState(340);
   // Shared navigation state for the Files tab: the FileTree (left pane)
   // and FileGrid (right pane) both read/write this so they stay in sync.
   // "" = project root. `showTree` lets the user reclaim the tree's width.
@@ -210,6 +218,8 @@ function Body({
   // user had previously selected/navigated deselects rather than staying
   // highlighted, and closing the player returns to the file's folder. Called
   // with null to close the player (the grid then shows the same folder).
+  // Selecting a card sets it as the active clip (highlighted) but does NOT
+  // auto-open the player/comments — those follow their toggles only.
   const openPreview = (file: VideoPreviewFile | null) => {
     if (file) {
       const slash = file.path.lastIndexOf("/");
@@ -320,26 +330,13 @@ function Body({
   // Player dock open ⇢ a clip is selected, on the Files view, and the
   // player toggle is on. When open, the file panel becomes a fixed,
   // resizable width and the player fills the rest.
-  const playerOpen = tab === "files" && !!preview && showPlayer;
-  const startFilePanelResize = (e: React.PointerEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = filePanelWidth;
-    const onMove = (ev: PointerEvent) => {
-      const next = Math.min(720, Math.max(280, startW + (ev.clientX - startX)));
-      setFilePanelWidth(next);
-    };
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  };
+  // Player and comments are INDEPENDENT docks driven only by their toggles —
+  // they appear/disappear instantly (no slide), and toggling one never moves
+  // the other. A selected clip drives them; with none they show the empty
+  // state. Selecting a card does NOT auto-open them.
+  const playerOpen = tab === "files" && showPlayer;
+  const commentsOpen = tab === "files" && showComments;
+  const anyReviewDock = playerOpen || commentsOpen;
 
   const DOCK = "rounded-xl border border-line bg-panel";
 
@@ -478,9 +475,13 @@ function Body({
 
         <div
           className={cn(DOCK, "flex min-w-0 flex-col overflow-hidden")}
-          style={
-            playerOpen ? { width: filePanelWidth, flexShrink: 0 } : { flex: "1 1 0%" }
-          }
+          style={{
+            // Fixed (resizable) width when the player sits beside it; flex-1
+            // to fill when the player is hidden. No transition — the grid must
+            // reflow instantly with the width change.
+            flexGrow: playerOpen ? 0 : 1,
+            flexBasis: playerOpen ? filePanelWidth : 0,
+          }}
         >
           <div className={cn("min-h-0 flex-1", tab === "files" ? "flex flex-col" : "hidden")}>
             <FileGrid
@@ -536,22 +537,68 @@ function Body({
           </div>
         </div>
 
-        {playerOpen && (
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize file panel"
-            onPointerDown={startFilePanelResize}
-            className="group flex w-1.5 shrink-0 cursor-col-resize items-center justify-center"
-          >
-            <span className="h-10 w-1 rounded-full bg-line-strong transition-colors group-hover:bg-accent" />
-          </div>
-        )}
-        {playerOpen && (
-          <div className={cn(DOCK, "flex min-w-0 flex-1 flex-col overflow-hidden")}>
-            <LazyVideoReviewPanel file={preview} showComments={showComments} />
-          </div>
-        )}
+        {/* Independent player + comments docks — shown/hidden instantly by
+            their own toggles, so toggling one never moves the other and the
+            file grid reflows immediately. A selected clip drives PlayerStage /
+            CommentsPane (shared review state via ReviewProvider); with none
+            each shows its empty-state placeholder. */}
+        {anyReviewDock &&
+          (() => {
+            const docks = (
+              <>
+                {playerOpen && (
+                  <>
+                    <ResizeHandle
+                      ariaLabel="Resize file panel"
+                      onResize={(dx) =>
+                        setFilePanelWidth((w) => Math.min(720, Math.max(280, w + dx)))
+                      }
+                    />
+                    <div className={cn(DOCK, "flex min-w-0 flex-1 flex-col overflow-hidden")}>
+                      {preview ? (
+                        <PlayerStage />
+                      ) : (
+                        <EmptyDock
+                          className="flex-1"
+                          icon={<EmptyMediaIcon />}
+                          label="No asset selected"
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
+                {commentsOpen && (
+                  <>
+                    <ResizeHandle
+                      ariaLabel="Resize comments"
+                      onResize={(dx) =>
+                        setCommentsWidth((w) => Math.min(560, Math.max(260, w - dx)))
+                      }
+                    />
+                    <aside
+                      className={cn(DOCK, "flex shrink-0 flex-col overflow-hidden")}
+                      style={{ width: commentsWidth }}
+                    >
+                      {preview ? (
+                        <CommentsPane />
+                      ) : (
+                        <EmptyDock
+                          className="flex-1"
+                          icon={<EmptyCommentsIcon />}
+                          label="Select an asset to view details"
+                        />
+                      )}
+                    </aside>
+                  </>
+                )}
+              </>
+            );
+            return preview ? (
+              <ReviewProvider file={preview}>{docks}</ReviewProvider>
+            ) : (
+              docks
+            );
+          })()}
       </div>
 
 
@@ -886,6 +933,52 @@ function ActivityGlyph() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]" aria-hidden>
       <path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// EmptyDock: the placeholder shown in the player / comments dock before a
+// clip is selected (mirrors the Frame.io empty states).
+function EmptyDock({
+  className,
+  icon,
+  label,
+}: {
+  className?: string;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-3 text-fg-faint",
+        className,
+      )}
+    >
+      {icon}
+      <span className="text-sm">{label}</span>
+    </div>
+  );
+}
+
+function EmptyMediaIcon() {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" className="h-14 w-14 text-fg-faint/60" aria-hidden>
+      <rect x="6" y="12" width="30" height="22" rx="3" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="2" />
+      <circle cx="15" cy="20" r="2.5" fill="currentColor" />
+      <path d="M9 31l8-8 6 6 5-5 8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M36 23l6-4v14l-6-4" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EmptyCommentsIcon() {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" className="h-14 w-14 text-fg-faint/60" aria-hidden>
+      <path d="M8 12h22a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H18l-7 5v-5H8a3 3 0 0 1-3-3V15a3 3 0 0 1 3-3z" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <circle cx="14" cy="20" r="1.6" fill="currentColor" />
+      <circle cx="20" cy="20" r="1.6" fill="currentColor" />
+      <circle cx="26" cy="20" r="1.6" fill="currentColor" />
     </svg>
   );
 }
@@ -1636,21 +1729,36 @@ function InviteMemberModal({
   folderSizeBytes: number;
 }) {
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState("full");
+  const [message, setMessage] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const create = useCreateInvitation();
 
   const close = () => {
     setEmail("");
+    setRole("full");
+    setMessage("");
     setErr(null);
     onClose();
   };
+
+  const projectName = folder.label || folder.id;
 
   return (
     <Modal
       open={open}
       onClose={close}
-      title="Invite collaborator"
-      primaryLabel={create.isPending ? "Sending…" : "Send invite"}
+      title={
+        <div className="flex items-center gap-2.5">
+          <span
+            className="h-6 w-6 shrink-0 rounded ring-1 ring-line-strong"
+            style={{ backgroundImage: inviteGradient(folder.id) }}
+            aria-hidden
+          />
+          <span className="truncate">Add to {projectName}</span>
+        </div>
+      }
+      primaryLabel={create.isPending ? "Adding…" : "Add"}
       primaryDisabled={create.isPending || !email.trim() || !myID}
       onPrimary={async () => {
         setErr(null);
@@ -1658,17 +1766,12 @@ function InviteMemberModal({
           await create.mutateAsync({
             folderID: folder.id,
             email: email.trim(),
-            folderLabel: folder.label || folder.id,
+            folderLabel: projectName,
             ownerDeviceId: myID,
-            // Only send a positive size; 0 means the folder hasn't been
-            // scanned yet, in which case we leave it unknown.
             folderSizeBytes: folderSizeBytes > 0 ? folderSizeBytes : undefined,
           });
           close();
         } catch (e) {
-          // Show the backend's clean message (e.g. "That email isn't a
-          // registered Vidsync user") rather than the verbose
-          // method/path/status form in CloudAPIError.message.
           setErr(
             e instanceof CloudAPIError
               ? e.detail
@@ -1679,24 +1782,63 @@ function InviteMemberModal({
         }
       }}
     >
-      <p className="mb-4 text-sm text-fg-soft">
-        Send a project invite to a teammate's email. They'll be prompted
-        to sign in and accept — once they do, this project starts
-        syncing to their device automatically.
-      </p>
-      <Field label="Email">
+      {/* Name/email + role row. */}
+      <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-base focus-within:border-accent">
         <input
           autoFocus
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={inputClass}
-          placeholder="teammate@example.com"
+          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-fg-strong placeholder:text-fg-faint focus:outline-none"
+          placeholder="Name or email"
         />
-      </Field>
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          aria-label="Access level"
+          className="shrink-0 border-l border-line bg-base px-2 text-xs font-medium text-fg-soft focus:outline-none"
+        >
+          <option value="full">Full Access</option>
+          <option value="review">Reviewer</option>
+          <option value="view">Viewer</option>
+        </select>
+      </div>
+      <p className="mb-4 mt-1.5 text-xs text-fg-faint">
+        Add a new or existing Member
+      </p>
+
+      {/* Suggested members — empty until we surface recent collaborators. */}
+      <div className="mb-4">
+        <div className="mb-2 text-xs font-medium text-fg-soft">Suggested</div>
+        <div className="min-h-[120px] rounded-lg border border-dashed border-line bg-base/40 px-3 py-6 text-center text-xs text-fg-faint">
+          No suggestions yet
+        </div>
+      </div>
+
+      {/* Optional message. */}
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        rows={2}
+        placeholder="Add a message (optional)"
+        className="w-full resize-none rounded-lg border border-line bg-base px-3 py-2.5 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none"
+      />
       {err && <p className="mt-2 text-sm text-rose-400">{err}</p>}
     </Modal>
   );
+}
+
+// inviteGradient: deterministic project swatch for the invite modal header.
+function inviteGradient(id: string): string {
+  const grads = [
+    "linear-gradient(135deg,#f0719b,#7b3fe4)",
+    "linear-gradient(135deg,#4f7cff,#7b5cff)",
+    "linear-gradient(135deg,#1fb6a6,#0e7490)",
+    "linear-gradient(135deg,#f59e0b,#b45309)",
+  ];
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return grads[h % grads.length];
 }
 
 // --- small UI helpers ---

@@ -19,7 +19,6 @@ import {
   VIDEO_EXT,
 } from "../lib/videoFormats";
 import { makeNeedSets } from "../lib/folderAggregate";
-import { useFolderCollageThumbs } from "../lib/useFolderThumbs";
 import { cn } from "../lib/utils";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { FileDetailsModal, type FileDetails } from "./FileDetailsModal";
@@ -48,8 +47,6 @@ export interface ProjectMemberSummary {
 //
 // Anything in the browse tree but absent from the need sets is
 // implicitly synced.
-
-type View = "grid" | "list";
 
 // isJunkFile hides OS metadata files that aren't project content —
 // macOS Spotlight indexes (.DS_Store), Windows thumbnail caches
@@ -93,8 +90,11 @@ const SORT_LABELS: { value: SortKey; label: string }[] = [
 type CardSize = "S" | "M" | "L";
 type CardAspect = "video" | "square";
 type CardScale = "fill" | "fit";
+type CardView = "grid" | "list";
 
 interface Appearance {
+  // Grid of cards, or a compact list of rows.
+  view: CardView;
   size: CardSize;
   aspect: CardAspect;
   // How the thumbnail fills its frame: "fill" crops to cover, "fit" letterboxes.
@@ -109,6 +109,7 @@ interface Appearance {
 
 const APPEARANCE_KEY = "vidsync.gridAppearance";
 const DEFAULT_APPEARANCE: Appearance = {
+  view: "grid",
   size: "M",
   aspect: "video",
   scale: "fill",
@@ -328,7 +329,6 @@ export function FileGrid({
   const prioritize = useBringToFront();
   const unread = useUnread(folderID);
   const [filter, setFilter] = useState("");
-  const [view, setView] = useState<View>("grid");
   const [sort, setSort] = useState<SortKey>("recent");
   const [appearance, setAppearance] = useState<Appearance>(loadAppearance);
   const updateAppearance = (patch: Partial<Appearance>) =>
@@ -687,40 +687,77 @@ export function FileGrid({
 
   const folderCount = entries.filter((e) => e.kind === "folder").length;
   const fileCount = entries.length - folderCount;
+  // Footer + summary figures. Sizes come from the file entries in view.
+  const fileEntries = entries.filter(
+    (e): e is FileEntry => e.kind === "file",
+  );
+  const totalBytes = fileEntries.reduce((s, f) => s + f.size, 0);
+  const selectedFiles = fileEntries.filter((f) => selected.has(f.path));
+  const selectedBytes = selectedFiles.reduce((s, f) => s + f.size, 0);
+  const countSummary = [
+    folderCount > 0
+      ? `${folderCount.toLocaleString()} folder${folderCount === 1 ? "" : "s"}`
+      : null,
+    `${fileCount.toLocaleString()} file${fileCount === 1 ? "" : "s"}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-3 pb-3">
-      {/* pt-3 keeps the search row off the dock's top edge. */}
-      <div className="shrink-0 space-y-3 pt-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 space-y-2.5 px-3 pt-3">
         <Toolbar
           filter={filter}
           onFilter={setFilter}
-          view={view}
-          onView={setView}
           sort={sort}
           onSort={setSort}
           appearance={appearance}
           onAppearance={updateAppearance}
-          folderCount={folderCount}
-          fileCount={fileCount}
+          compact={compact}
           members={members}
           memberCount={memberCount}
           onOpenTeam={onOpenTeam}
         />
+        {/* Folder/file count instead of a redundant "Files" breadcrumb —
+            the project top bar already carries the path. */}
         {!filter && (
-          <Breadcrumb path={currentPath} onNavigate={setCurrentPath} />
+          <div className="px-0.5 text-xs text-fg-faint">{countSummary}</div>
         )}
       </div>
-      {/* Scrollable list region. Toolbar + breadcrumb stay anchored
-          above; the entries pane scrolls independently. */}
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+      {/* Scrollable list region; toolbar + count stay anchored above. */}
+      <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto px-3">
         {entries.length === 0 ? (
           <div className="rounded-xl border border-dashed border-line-strong bg-elevated/40 px-6 py-12 text-center">
             <p className="text-sm text-fg-soft">
               {filter ? "No files match your search." : "This folder is empty."}
             </p>
           </div>
-        ) : view === "grid" ? (
+        ) : appearance.view === "list" ? (
+          <ul className="overflow-hidden rounded-xl border border-line bg-elevated/40">
+            {entries.map((e) =>
+              e.kind === "folder" ? (
+                <FolderRow
+                  key={e.path}
+                  entry={e}
+                  unread={unread.isFolderUnread(e.path)}
+                  onOpen={() => setCurrentPath(e.path)}
+                />
+              ) : (
+                <FileRow
+                  key={e.path}
+                  file={e}
+                  folderID={folderID}
+                  unread={unread.isVideoUnread(e.path)}
+                  selected={selected.has(e.path)}
+                  active={preview?.path === e.path}
+                  onToggleSelect={() => toggleSelect(e.path)}
+                  onContextMenu={(x, y) => setMenu({ x, y, file: e })}
+                  onPreview={() => openPreview(e)}
+                />
+              ),
+            )}
+          </ul>
+        ) : (
           <div
             className={cn(
               "grid gap-2.5",
@@ -755,29 +792,21 @@ export function FileGrid({
               ),
             )}
           </div>
+        )}
+      </div>
+      {/* Footer bar — mirrors the projects sidebar's footer height. Shows
+          the selection summary, or the folder total when nothing is picked. */}
+      <div className="flex shrink-0 items-center justify-between border-t border-line px-4 py-3 text-[11px]">
+        {selected.size > 0 ? (
+          <span className="text-fg-soft">
+            <span className="font-medium text-accent">{selected.size}</span> selected
+            {selectedBytes > 0 ? ` · ${humanBytes(selectedBytes)}` : ""}
+          </span>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-elevated">
-            {entries.map((e) => (
-              <li key={e.path}>
-                {e.kind === "folder" ? (
-                  <FolderRow
-                    entry={e}
-                    folderID={folderID}
-                    unread={unread.isFolderUnread(e.path)}
-                    onOpen={() => setCurrentPath(e.path)}
-                  />
-                ) : (
-                  <FileRow
-                    file={e}
-                    folderID={folderID}
-                    unread={unread.isVideoUnread(e.path)}
-                    onContextMenu={(x, y) => setMenu({ x, y, file: e })}
-                    onPreview={() => openPreview(e)}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
+          <span className="text-fg-faint">
+            {fileCount.toLocaleString()} file{fileCount === 1 ? "" : "s"}
+            {totalBytes > 0 ? ` · ${humanBytes(totalBytes)}` : ""}
+          </span>
         )}
       </div>
       {menu && (
@@ -800,94 +829,246 @@ export function FileGrid({
 function Toolbar({
   filter,
   onFilter,
-  view,
-  onView,
   sort,
   onSort,
   appearance,
   onAppearance,
-  folderCount,
-  fileCount,
+  compact,
   members,
   memberCount,
   onOpenTeam,
 }: {
   filter: string;
   onFilter: (v: string) => void;
-  view: View;
-  onView: (v: View) => void;
   sort: SortKey;
   onSort: (s: SortKey) => void;
   appearance: Appearance;
   onAppearance: (patch: Partial<Appearance>) => void;
-  folderCount: number;
-  fileCount: number;
+  // Icon-only mode for when the grid is squeezed beside the player.
+  compact: boolean;
   members: ProjectMemberSummary[];
   memberCount: number;
   onOpenTeam?: () => void;
 }) {
-  // Compact summary: "3 folders · 12 files", dropping zero terms.
-  const parts: string[] = [];
-  if (folderCount > 0) {
-    parts.push(`${folderCount.toLocaleString()} folder${folderCount === 1 ? "" : "s"}`);
-  }
-  if (fileCount > 0 || folderCount === 0) {
-    parts.push(`${fileCount.toLocaleString()} file${fileCount === 1 ? "" : "s"}`);
-  }
+  // In compact mode the search expands to fill the toolbar, collapsing the
+  // other controls away; it closes (with animation) on Enter or blur.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchExpanded = compact && searchOpen;
   return (
-    <div className="flex items-center gap-3">
-      {/* Left: display controls — Appearance (grid only), Sort, View. */}
-      {view === "grid" && (
-        <AppearanceMenu appearance={appearance} onAppearance={onAppearance} />
-      )}
-      <label className="flex shrink-0 items-center gap-1.5 text-xs text-fg-soft">
-        <span className="hidden sm:inline">Sort</span>
-        <select
-          value={sort}
-          onChange={(e) => onSort(e.target.value as SortKey)}
-          className="rounded-md border border-line bg-panel py-1 pl-2 pr-7 text-xs text-fg-strong focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-          aria-label="Sort files"
-        >
-          {SORT_LABELS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="inline-flex rounded-lg bg-panel p-0.5 ring-1 ring-line">
-        <ViewToggle
-          active={view === "grid"}
-          onClick={() => onView("grid")}
-          label="Grid"
-          icon={<GridIcon />}
+    <div className="flex items-center gap-2">
+      {/* Left: display controls — Appearance, Sort. Collapse when searching.
+          overflow-hidden ONLY while collapsing, otherwise it clips the
+          Appearance / Sort dropdown popovers. */}
+      <div
+        className={cn(
+          "flex items-center gap-2 transition-all duration-300 ease-out",
+          searchExpanded
+            ? "max-w-0 -ml-2 overflow-hidden opacity-0"
+            : "max-w-[280px] opacity-100",
+        )}
+      >
+        <AppearanceMenu
+          appearance={appearance}
+          onAppearance={onAppearance}
+          compact={compact}
         />
-        <ViewToggle
-          active={view === "list"}
-          onClick={() => onView("list")}
-          label="List"
-          icon={<ListIcon />}
-        />
+        <SortControl sort={sort} onSort={onSort} compact={compact} />
       </div>
-      <span className="shrink-0 text-xs text-fg-faint">{parts.join(" · ")}</span>
 
       {/* Right: team avatars + search. */}
-      <div className="ml-auto flex items-center gap-3">
-        <MemberStack
-          members={members}
-          memberCount={memberCount}
-          onOpenTeam={onOpenTeam}
-        />
-        <div className="relative w-56 shrink-0 lg:w-64">
-          <SearchGlyph />
-          <input
-            value={filter}
-            onChange={(e) => onFilter(e.target.value)}
-            placeholder="Search files…"
-            className="w-full rounded-lg border border-line bg-panel py-2 pl-9 pr-3 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+      <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+        <div
+          className={cn(
+            "overflow-hidden transition-all duration-300 ease-out",
+            searchExpanded ? "max-w-0 opacity-0" : "max-w-[140px] opacity-100",
+          )}
+        >
+          <MemberStack
+            members={members}
+            memberCount={memberCount}
+            onOpenTeam={onOpenTeam}
           />
         </div>
+        {compact ? (
+          <div
+            className={cn(
+              "relative shrink-0 transition-all duration-300 ease-out",
+              searchOpen ? "w-full" : "w-9",
+            )}
+          >
+            {searchOpen ? (
+              <>
+                <SearchGlyph />
+                <input
+                  autoFocus
+                  value={filter}
+                  onChange={(e) => onFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      e.currentTarget.blur();
+                      setSearchOpen(false);
+                    }
+                  }}
+                  onBlur={() => setSearchOpen(false)}
+                  placeholder="Search files…"
+                  className="w-full rounded-lg border border-line bg-panel py-2 pl-9 pr-8 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                {filter && <ClearSearchButton onClear={() => onFilter("")} />}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                title="Search files"
+                aria-label="Search files"
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-panel text-fg-soft ring-1 ring-line transition-colors hover:text-fg-strong hover:ring-line-strong"
+              >
+                <SearchGlyph inline />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="relative w-56 shrink-0 lg:w-64">
+            <SearchGlyph />
+            <input
+              value={filter}
+              onChange={(e) => onFilter(e.target.value)}
+              placeholder="Search files…"
+              className="w-full rounded-lg border border-line bg-panel py-2 pl-9 pr-8 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            {filter && <ClearSearchButton onClear={() => onFilter("")} />}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ClearSearchButton: the × inside a search input that empties the query.
+// preventDefault on mousedown so clicking it doesn't blur (and close) the
+// compact search before the clear registers.
+function ClearSearchButton({ onClear }: { onClear: () => void }) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClear}
+      aria-label="Clear search"
+      title="Clear search"
+      className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-fg-faint transition-colors hover:bg-hover hover:text-fg-strong"
+    >
+      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5" aria-hidden>
+        <path d="M10 8.6 5.7 4.3 4.3 5.7 8.6 10l-4.3 4.3 1.4 1.4L10 11.4l4.3 4.3 1.4-1.4L11.4 10l4.3-4.3-1.4-1.4z" />
+      </svg>
+    </button>
+  );
+}
+
+// SortControl: a Frame.io-style "Sort by" popover — a searchable list of
+// sort fields with a checkmark on the active one. Icon-only trigger in
+// compact mode, icon + current field otherwise.
+function SortControl({
+  sort,
+  onSort,
+  compact,
+}: {
+  sort: SortKey;
+  onSort: (s: SortKey) => void;
+  compact: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const current = SORT_LABELS.find((s) => s.value === sort);
+  const ql = q.trim().toLowerCase();
+  const shown = ql
+    ? SORT_LABELS.filter((s) => s.label.toLowerCase().includes(ql))
+    : SORT_LABELS;
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title="Sort"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-lg bg-panel ring-1 transition-colors",
+          compact ? "h-8 w-8 justify-center" : "px-2.5 py-1.5 text-xs font-medium",
+          open ? "text-fg-strong ring-line-strong" : "text-fg ring-line hover:ring-line-strong",
+        )}
+      >
+        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 text-fg-soft" aria-hidden>
+          <path d="M6 5v10M6 15l-2.5-2.5M6 15l2.5-2.5M13 15V5M13 5l-2.5 2.5M13 5l2.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {!compact && <span className="hidden sm:inline">{current?.label ?? "Sort"}</span>}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-2 w-60 rounded-xl border border-line-strong bg-elevated p-2 shadow-2xl shadow-black/60">
+          <div className="px-1.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-fg-faint">
+            Sort by
+          </div>
+          <div className="relative mb-1.5">
+            <SearchGlyph />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search fields"
+              className="w-full rounded-lg border border-line bg-base py-1.5 pl-9 pr-3 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {shown.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => {
+                  onSort(s.value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                  s.value === sort
+                    ? "text-fg-strong"
+                    : "text-fg hover:bg-hover hover:text-fg-strong",
+                )}
+              >
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-panel text-[9px] font-semibold text-fg-faint ring-1 ring-line">
+                  {s.label[0]}
+                </span>
+                <span className="flex-1 truncate">{s.label}</span>
+                {s.value === sort && (
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 text-accent" aria-hidden>
+                    <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+                  </svg>
+                )}
+              </button>
+            ))}
+            {shown.length === 0 && (
+              <p className="px-2 py-3 text-center text-xs text-fg-faint">
+                No matching field
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -944,9 +1125,11 @@ function MemberStack({
 function AppearanceMenu({
   appearance,
   onAppearance,
+  compact = false,
 }: {
   appearance: Appearance;
   onAppearance: (patch: Partial<Appearance>) => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -985,7 +1168,7 @@ function AppearanceMenu({
           <line x1="21" y1="19" x2="16" y2="19" /><line x1="12" y1="19" x2="3" y2="19" />
           <line x1="14" y1="3" x2="14" y2="7" /><line x1="8" y1="10" x2="8" y2="14" /><line x1="16" y1="17" x2="16" y2="21" />
         </svg>
-        <span className="hidden sm:inline">Appearance</span>
+        {!compact && <span className="hidden sm:inline">Appearance</span>}
       </button>
       {open && (
         <div className="absolute left-0 top-full z-30 mt-2 w-72 rounded-xl border border-line-strong bg-elevated p-4 shadow-2xl shadow-black/60">
@@ -1000,6 +1183,15 @@ function AppearanceMenu({
             <span className="text-[10px] text-fg-faint">Visible to only you</span>
           </div>
           <div className="space-y-3 text-sm">
+            <Segmented
+              label="View"
+              value={appearance.view}
+              options={[
+                { value: "grid", label: "Grid" },
+                { value: "list", label: "List" },
+              ]}
+              onChange={(view) => onAppearance({ view: view as CardView })}
+            />
             <Segmented
               label="Card Size"
               value={appearance.size}
@@ -1115,84 +1307,6 @@ function Toggle({
           )}
         />
       </span>
-    </button>
-  );
-}
-
-// Breadcrumb: "Files / sub / deeper" with clickable segments. The root
-// click resets to currentPath="". Each crumb returns to that level.
-function Breadcrumb({
-  path,
-  onNavigate,
-}: {
-  path: string;
-  onNavigate: (next: string) => void;
-}) {
-  const segments = path ? path.split("/") : [];
-  return (
-    <nav className="flex items-center gap-1 text-sm text-fg-soft" aria-label="Breadcrumb">
-      <button
-        type="button"
-        onClick={() => onNavigate("")}
-        className={cn(
-          "rounded-md px-2 py-1 transition-colors",
-          segments.length === 0
-            ? "text-fg-strong"
-            : "hover:bg-hover hover:text-fg-strong",
-        )}
-      >
-        Files
-      </button>
-      {segments.map((seg, i) => {
-        const target = segments.slice(0, i + 1).join("/");
-        const isLast = i === segments.length - 1;
-        return (
-          <span key={target} className="flex items-center gap-1">
-            <span className="text-fg-faint">/</span>
-            <button
-              type="button"
-              onClick={() => onNavigate(target)}
-              className={cn(
-                "truncate rounded-md px-2 py-1 transition-colors",
-                isLast
-                  ? "text-fg-strong"
-                  : "hover:bg-hover hover:text-fg-strong",
-              )}
-            >
-              {seg}
-            </button>
-          </span>
-        );
-      })}
-    </nav>
-  );
-}
-
-function ViewToggle({
-  active,
-  onClick,
-  label,
-  icon,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-        active
-          ? "bg-accent/15 text-accent"
-          : "text-fg-soft hover:text-fg-strong",
-      )}
-    >
-      {icon}
     </button>
   );
 }
@@ -1448,63 +1562,6 @@ function folderGradient(path: string): string {
   return FOLDER_GRADIENTS[h % FOLDER_GRADIENTS.length];
 }
 
-function FolderRow({
-  entry,
-  folderID,
-  unread,
-  onOpen,
-}: {
-  entry: FolderEntry;
-  folderID: string;
-  unread?: boolean;
-  onOpen: () => void;
-}) {
-  const thumbs = useFolderCollageThumbs(folderID, 1, entry.path);
-  const [thumbBroken, setThumbBroken] = useState(false);
-  const thumb = thumbs[0];
-  useEffect(() => setThumbBroken(false), [thumb]);
-  const a = entry.aggregate;
-  const total = a.totalFiles || entry.childCount;
-  // Inline metadata strip: count, total bytes, optional in-flight
-  // count. Mirrors the file row's compact one-liner layout.
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      title={entry.path}
-      className="flex w-full items-center gap-3 px-4 py-1.5 text-left text-sm transition-colors hover:bg-hover"
-    >
-      <div className="relative h-6 w-10 shrink-0 overflow-hidden rounded bg-base ring-1 ring-line">
-        {thumb && !thumbBroken ? (
-          <img
-            src={thumb}
-            alt=""
-            aria-hidden
-            draggable={false}
-            className="absolute inset-0 h-full w-full object-cover"
-            onError={() => setThumbBroken(true)}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-900/40 via-violet-900/30 to-slate-900">
-            <FolderIcon className="h-3.5 w-3.5 text-fg-soft" />
-          </div>
-        )}
-      </div>
-      <div className="min-w-0 flex-1 truncate font-medium text-fg-strong">
-        {entry.name}
-      </div>
-      {unread && <UnreadBadge className="shrink-0" />}
-      <div className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-fg-soft sm:block">
-        {total.toLocaleString()} item{total === 1 ? "" : "s"}
-      </div>
-      <div className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-fg-faint md:block">
-        {humanBytes(a.totalBytes)}
-      </div>
-      <FolderStateChip aggregate={a} />
-    </button>
-  );
-}
-
 // folderSubtitle renders the rollup line under a folder name. Always
 // shows file count + total bytes; appends "(N syncing)" or "(N pending)"
 // when the subtree isn't fully synced so the user knows there's work
@@ -1561,93 +1618,118 @@ function FolderIcon({ className }: { className?: string }) {
   );
 }
 
-// --- List row -----------------------------------------------------------
+// --- List rows ----------------------------------------------------------
+
+function FolderRow({
+  entry,
+  unread,
+  onOpen,
+}: {
+  entry: FolderEntry;
+  unread?: boolean;
+  onOpen: () => void;
+}) {
+  const subtitle = folderSubtitle(entry.aggregate, entry.childCount);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        title={entry.path}
+        className="flex w-full items-center gap-3 border-b border-line px-3 py-2 text-left text-sm transition-colors last:border-0 hover:bg-hover"
+      >
+        <span
+          className="h-6 w-10 shrink-0 rounded ring-1 ring-line-strong"
+          style={{ backgroundImage: folderGradient(entry.path) }}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate font-medium text-fg-strong">
+          {entry.name}
+        </span>
+        {unread && <UnreadBadge className="shrink-0" />}
+        <span className="hidden shrink-0 text-xs text-fg-faint sm:block">
+          {subtitle}
+        </span>
+        <FolderStateChip aggregate={entry.aggregate} />
+      </button>
+    </li>
+  );
+}
 
 function FileRow({
   file,
   folderID,
   unread,
+  selected = false,
+  active = false,
+  onToggleSelect,
   onContextMenu,
   onPreview,
 }: {
   file: FileEntry;
   folderID: string;
   unread?: boolean;
+  selected?: boolean;
+  active?: boolean;
+  onToggleSelect?: () => void;
   onContextMenu: (x: number, y: number) => void;
   onPreview: () => void;
 }) {
   const synced = file.state.kind === "synced";
   const thumbable = synced && isThumbnailable(file.name);
-  // Match FileTile: any video/audio/image opens on click; hover-to-play is
-  // video-only.
   const openable = synced && isPreviewable(file.name);
-  const hoverable = synced && isPlayable(file.name);
-  const transcode = needsTranscode(file.name);
-
-  // Hover-to-play preview, mirroring the grid tile (delayed mount so a quick
-  // scroll past rows doesn't spin up a decoder on each one).
-  const [hoverPlay, setHoverPlay] = useState(false);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearHoverTimer = () => {
-    if (hoverTimer.current !== null) {
-      clearTimeout(hoverTimer.current);
-      hoverTimer.current = null;
-    }
-  };
-  const onEnter = () => {
-    if (!hoverable) return;
-    clearHoverTimer();
-    hoverTimer.current = setTimeout(() => setHoverPlay(true), 250);
-  };
-  const onLeave = () => {
-    clearHoverTimer();
-    setHoverPlay(false);
-  };
-  useEffect(() => () => clearHoverTimer(), []);
-
   return (
-    <div
+    <li
       className={cn(
-        "flex items-center gap-3 px-4 py-1.5 text-sm transition-colors hover:bg-hover",
+        "group flex items-center gap-3 border-b border-line px-3 py-1.5 text-sm transition-colors last:border-0",
+        selected || active ? "bg-accent/10" : "hover:bg-hover",
         openable ? "cursor-pointer" : "cursor-default",
       )}
       onClick={() => {
         if (openable) onPreview();
       }}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu(e.clientX, e.clientY);
       }}
       title={file.path}
     >
-      <div className="relative h-6 w-10 shrink-0 overflow-hidden rounded bg-black">
+      {onToggleSelect && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
+          aria-label={selected ? "Deselect" : "Select"}
+          aria-pressed={selected}
+          className={cn(
+            "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+            selected
+              ? "border-accent bg-accent text-white"
+              : "border-line text-transparent group-hover:border-line-strong",
+          )}
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3" aria-hidden>
+            <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+          </svg>
+        </button>
+      )}
+      <span className="relative h-6 w-10 shrink-0 overflow-hidden rounded bg-black">
         <TileThumbnail file={file} folderID={folderID} enabled={thumbable} />
-        {hoverPlay && (
-          <HoverPreviewVideo
-            folderID={folderID}
-            path={file.path}
-            transcode={transcode}
-            size={file.size}
-            modified={file.modified}
-          />
-        )}
-      </div>
-      <div className="min-w-0 flex-1 truncate font-medium text-fg-strong">
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium text-fg-strong">
         {file.name}
-      </div>
+      </span>
       {unread && <UnreadBadge className="shrink-0" />}
-      <div className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-fg-soft sm:block">
+      <span className="hidden w-20 shrink-0 text-right text-xs tabular-nums text-fg-soft sm:block">
         {humanBytes(file.size)}
-      </div>
-      <div className="hidden w-20 shrink-0 text-right text-xs text-fg-faint md:block">
+      </span>
+      <span className="hidden w-24 shrink-0 text-right text-xs text-fg-faint md:block">
         {humanRelative(file.modified)}
-      </div>
-      <div className="shrink-0">
-        <StateChip state={file.state} />
-      </div>
-    </div>
+      </span>
+      <StateChip state={file.state} />
+    </li>
   );
 }
 
@@ -1921,7 +2003,7 @@ async function copyText(text: string) {
   document.body.removeChild(ta);
 }
 
-function SearchGlyph() {
+function SearchGlyph({ inline = false }: { inline?: boolean }) {
   return (
     <svg
       viewBox="0 0 20 20"
@@ -1930,7 +2012,12 @@ function SearchGlyph() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint"
+      className={cn(
+        "h-4 w-4",
+        inline
+          ? ""
+          : "pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint",
+      )}
       aria-hidden
     >
       <circle cx="9" cy="9" r="6" />
@@ -1939,39 +2026,6 @@ function SearchGlyph() {
   );
 }
 
-function GridIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="h-4 w-4"
-      aria-hidden
-    >
-      <rect x="3" y="3" width="6" height="6" rx="1" />
-      <rect x="11" y="3" width="6" height="6" rx="1" />
-      <rect x="3" y="11" width="6" height="6" rx="1" />
-      <rect x="11" y="11" width="6" height="6" rx="1" />
-    </svg>
-  );
-}
-
-function ListIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      className="h-4 w-4"
-      aria-hidden
-    >
-      <path d="M4 5h12M4 10h12M4 15h12" />
-    </svg>
-  );
-}
 
 // Daemon /rest/db/browse wire shape. Each level is an array of
 // entries; directories carry a `children` array, files don't. We

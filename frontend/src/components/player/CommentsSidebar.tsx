@@ -7,7 +7,7 @@ import type { MediaInfo, Selection } from "./VideoStage";
 import { formatClock, formatRange, formatRelative } from "./format";
 import type { VideoPreviewFile } from "../VideoPreviewModal";
 
-type Tab = "comments" | "inspector";
+type Tab = "comments" | "fields";
 
 // CommentsSidebar: the right rail of the review player. The Comments tab is
 // the primary surface; Inspector shows clip metadata. Timestamp chips seek
@@ -37,10 +37,10 @@ export function CommentsSidebar({
   const [tab, setTab] = useState<Tab>("comments");
 
   return (
-    <aside className="flex w-[340px] shrink-0 flex-col border-l border-line-strong bg-panel">
+    <aside className="flex h-full w-full flex-col">
       <nav className="flex items-center gap-4 border-b border-line-strong px-4 pt-3 text-sm">
         <TabButton label="Comments" active={tab === "comments"} onClick={() => setTab("comments")} />
-        <TabButton label="Inspector" active={tab === "inspector"} onClick={() => setTab("inspector")} />
+        <TabButton label="Fields" active={tab === "fields"} onClick={() => setTab("fields")} />
       </nav>
 
       {tab === "comments" ? (
@@ -54,15 +54,19 @@ export function CommentsSidebar({
           setActiveMarkerId={setActiveMarkerId}
         />
       ) : (
-        <InspectorTab file={file} media={media} comments={comments} />
+        <FieldsTab file={file} media={media} comments={comments} />
       )}
     </aside>
   );
 }
 
-// InspectorTab shows clip metadata: file identity from the browse entry plus
-// duration / resolution read off the loaded <video>.
-function InspectorTab({
+type FieldFilter = "none" | "empty" | "filled";
+
+// FieldsTab: Frame.io-style metadata inspector — a header summary card plus a
+// searchable, filterable list of the clip's fields. Values we can't read from
+// the file / media element show as empty so the Only Empty / Only Filled
+// filters stay meaningful.
+function FieldsTab({
   file,
   media,
   comments,
@@ -71,62 +75,190 @@ function InspectorTab({
   media: MediaInfo | null;
   comments: UseComments;
 }) {
+  const [q, setQ] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [filter, setFilter] = useState<FieldFilter>("none");
+  const [filterOpen, setFilterOpen] = useState(false);
+
   const ext = file.name.includes(".")
     ? file.name.split(".").pop()!.toUpperCase()
-    : "—";
+    : "";
   const kindWord =
-    file.kind === "audio" ? "audio" : file.kind === "image" ? "image" : "video";
-  const replies = comments.threads.reduce((n, t) => n + t.replies.length, 0);
-  const openCount = comments.threads.filter((t) => !t.resolved).length;
-
-  // "Location" is the folder the clip lives in (relative to the project
-  // root) — not the path including the filename, which would just repeat
-  // "Name" for clips at the root.
+    file.kind === "audio" ? "Audio" : file.kind === "image" ? "Image" : "Video";
   const slash = file.path.lastIndexOf("/");
   const folder = slash >= 0 ? file.path.slice(0, slash) : "";
+  const resolution =
+    media && media.width > 0 ? `${media.width} × ${media.height}` : "";
+  const duration =
+    media && media.duration > 0 ? formatClock(media.duration) : "";
+  const created = file.modified
+    ? new Date(file.modified).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "";
 
-  const rows: { label: string; value: string }[] = [
+  const fields: { label: string; value: string }[] = [
     { label: "Name", value: file.name },
+    { label: "File Type", value: kindWord },
+    { label: "Format", value: ext },
     { label: "Location", value: folder ? `${folder}/` : "Project root" },
-    { label: "Kind", value: ext === "—" ? "File" : `${ext} ${kindWord}` },
-    { label: "Size", value: humanBytes(file.size) },
-    {
-      label: "Resolution",
-      value: media && media.width > 0 ? `${media.width} × ${media.height}` : "—",
-    },
-    {
-      label: "Duration",
-      value: media && media.duration > 0 ? formatClock(media.duration) : "—",
-    },
-    {
-      label: "Modified",
-      value: file.modified ? new Date(file.modified).toLocaleString() : "—",
-    },
-    {
-      label: "Comments",
-      value: `${comments.pins.length} (${openCount} open) · ${replies} repl${replies === 1 ? "y" : "ies"}`,
-    },
+    { label: "File Size", value: humanBytes(file.size) },
+    { label: "Resolution", value: resolution },
+    { label: "Resolution - Width", value: media?.width ? `${media.width}` : "" },
+    { label: "Resolution - Height", value: media?.height ? `${media.height}` : "" },
+    { label: "Duration", value: duration },
+    { label: "Comment Count", value: `${comments.pins.length}` },
+    { label: "Date Uploaded", value: created },
   ];
 
+  const ql = q.trim().toLowerCase();
+  const shown = fields.filter((f) => {
+    if (ql && !f.label.toLowerCase().includes(ql)) return false;
+    if (filter === "empty" && f.value) return false;
+    if (filter === "filled" && !f.value) return false;
+    return true;
+  });
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-      <dl className="space-y-3">
-        {rows.map((r) => (
-          <div key={r.label} className="flex flex-col gap-0.5">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-fg-faint">
-              {r.label}
-            </dt>
-            <dd
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      {/* Summary card */}
+      <div className="rounded-xl border border-line bg-base/60 p-3">
+        <div className="truncate text-sm font-medium text-fg-strong" title={file.name}>
+          {file.name}
+        </div>
+        {created && (
+          <div className="mt-0.5 text-[11px] text-fg-faint">Created {created}</div>
+        )}
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <Stat label="Type" value={ext || kindWord} />
+          <Stat label="Resolution" value={resolution || "—"} />
+          <Stat label="Size" value={humanBytes(file.size)} />
+        </div>
+      </div>
+
+      {/* Fields header: count + filter + search */}
+      <div className="mt-4 flex items-center justify-between">
+        <span className="text-xs font-medium text-fg-soft">
+          All Fields ({fields.length})
+        </span>
+        <div className="flex items-center gap-1">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFilterOpen((o) => !o)}
+              title="Filter fields"
+              aria-label="Filter fields"
               className={cn(
-                "break-words text-sm text-fg-strong",
-                (r.label === "Location" || r.label === "Name") && "font-mono text-[12px]",
+                "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+                filter !== "none"
+                  ? "bg-accent/15 text-accent"
+                  : "text-fg-soft hover:bg-hover hover:text-fg-strong",
               )}
             >
-              {r.value}
-            </dd>
+              <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden>
+                <path d="M3 5h14M6 10h8M9 15h2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-full z-30 mt-1.5 w-40 rounded-lg border border-line-strong bg-elevated p-1.5 shadow-2xl shadow-black/60">
+                <div className="px-2 py-1 text-[11px] font-medium text-fg-faint">
+                  Filter by…
+                </div>
+                {(
+                  [
+                    ["none", "None"],
+                    ["empty", "Only Empty"],
+                    ["filled", "Only Filled"],
+                  ] as [FieldFilter, string][]
+                ).map(([v, label]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => {
+                      setFilter(v);
+                      setFilterOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-fg transition-colors hover:bg-hover hover:text-fg-strong"
+                  >
+                    {label}
+                    {filter === v && (
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-accent" aria-hidden>
+                        <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4l2.3 2.29 6.3-6.29a1 1 0 0 1 1.4 0z" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSearch((s) => !s)}
+            title="Search fields"
+            aria-label="Search fields"
+            className={cn(
+              "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+              showSearch ? "bg-accent/15 text-accent" : "text-fg-soft hover:bg-hover hover:text-fg-strong",
+            )}
+          >
+            <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden>
+              <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
+              <path d="m17 17-4.35-4.35" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {showSearch && (
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search fields…"
+          className="mt-2 w-full rounded-lg border border-line bg-base px-3 py-1.5 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent focus:outline-none"
+        />
+      )}
+
+      <div className="mt-2 space-y-px">
+        {shown.map((f) => (
+          <div
+            key={f.label}
+            className="flex items-center gap-3 rounded-md px-1 py-2"
+          >
+            <span className="min-w-0 flex-1 truncate text-[13px] text-fg-soft">
+              {f.label}
+            </span>
+            <span
+              className={cn(
+                "shrink-0 truncate text-right text-[13px]",
+                f.value ? "text-fg-strong" : "text-fg-faint",
+              )}
+            >
+              {f.value || "—"}
+            </span>
           </div>
         ))}
-      </dl>
+        {shown.length === 0 && (
+          <p className="py-6 text-center text-xs text-fg-faint">No fields match.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-elevated px-1 py-2">
+      <div className="text-[9px] font-semibold uppercase tracking-wide text-fg-faint">
+        {label}
+      </div>
+      <div className="mt-0.5 truncate text-[12px] font-medium text-fg-strong">
+        {value}
+      </div>
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { origins } from "../api/origins";
 import { useFolderState } from "../realtime/hooks";
 import { humanStateLabel } from "../lib/projectState";
-import { ProjectCover } from "./ProjectCover";
 import { FileTree } from "./FileTree";
 import { cn } from "../lib/utils";
 import type { FolderConfiguration } from "../api/types";
@@ -71,7 +70,7 @@ export function ProjectsNav({
   }, [folders]);
 
   return (
-    <aside className="flex w-[252px] shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-panel">
+    <aside className="flex h-full w-[252px] shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex items-center justify-between px-4 pb-2 pt-4">
         <span className="text-sm font-semibold text-fg-strong">Projects</span>
         <button
@@ -94,7 +93,7 @@ export function ProjectsNav({
           className={cn(
             "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
             allProjectsActive
-              ? "bg-accent/15 text-accent"
+              ? "bg-hover text-fg-strong"
               : "text-fg-default hover:bg-hover hover:text-fg-strong",
           )}
         >
@@ -197,8 +196,8 @@ function ProjectRow({
         className={cn(
           "flex items-center gap-1.5 rounded-lg pr-2 transition-colors",
           active
-            ? "bg-accent/12 text-accent"
-            : "text-fg-default hover:bg-hover hover:text-fg-strong",
+            ? "bg-hover text-fg-strong"
+            : "text-fg-default hover:bg-hover/60 hover:text-fg-strong",
         )}
       >
         <button
@@ -207,13 +206,18 @@ function ProjectRow({
           aria-label={expanded ? "Collapse" : "Expand"}
           className="flex h-7 w-5 shrink-0 items-center justify-center rounded text-fg-faint hover:text-fg-strong"
         >
+          {/* Same chevron as the file tree rows. */}
           <svg
             viewBox="0 0 24 24"
-            fill="currentColor"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")}
             aria-hidden
           >
-            <path d="M9 6l6 6-6 6z" />
+            <path d="m9 6 6 6-6 6" />
           </svg>
         </button>
         <button
@@ -222,9 +226,10 @@ function ProjectRow({
           title={folder.label || folder.id}
           className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left text-sm"
         >
-          <ProjectCover
-            folderID={folder.id}
+          <span
             className="h-5 w-5 shrink-0 rounded ring-1 ring-line-strong"
+            style={{ backgroundImage: projectGradient(folder.id) }}
+            aria-hidden
           />
           <span className="flex-1 truncate">{folder.label || folder.id}</span>
           <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} title={view.label} aria-hidden />
@@ -236,6 +241,7 @@ function ProjectRow({
             folderID={folder.id}
             currentPath=""
             selectedPath={null}
+            showRoot={false}
             onNavigate={onNavigate}
             onPreview={onPreview}
           />
@@ -243,4 +249,21 @@ function ProjectRow({
       )}
     </div>
   );
+}
+
+// projectGradient: deterministic cinematic swatch for a project's cover,
+// replacing the 4-thumbnail collage. Matches the folder-tile gradients.
+const PROJECT_GRADIENTS = [
+  "linear-gradient(135deg,#1a2740,#06101f)",
+  "radial-gradient(120% 120% at 30% 10%,#3a2a1c,#0b0805)",
+  "linear-gradient(160deg,#2a1530,#08040f)",
+  "radial-gradient(120% 100% at 70% 20%,#103030,#051014)",
+  "linear-gradient(135deg,#2b2030,#0a0814)",
+  "linear-gradient(135deg,#152a3a,#06101a)",
+];
+
+function projectGradient(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PROJECT_GRADIENTS[h % PROJECT_GRADIENTS.length];
 }

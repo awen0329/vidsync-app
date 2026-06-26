@@ -113,6 +113,19 @@
     overscroll-behavior: none;
   }
 
+  /* Panel slide-in animations — played when a dock is revealed by one of
+     the three layout toggles (projects sidebar / player / comments). */
+  @keyframes vs-slide-left {
+    from { opacity: 0; transform: translateX(-16px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes vs-slide-right {
+    from { opacity: 0; transform: translateX(16px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .vs-slide-left { animation: vs-slide-left 200ms ease-out; }
+  .vs-slide-right { animation: vs-slide-right 200ms ease-out; }
+
   /* Thin, theme-matched scrollbars. Mac auto-hides natively but
      the rule is harmless there; Win/Linux otherwise show chunky
      default scrollbars that look out of place over our dark UI. */
